@@ -1,0 +1,9 @@
+pandas
+numpy
+boto3
+cvxpy
+scikit-learn
+marimo
+matplotlib
+s3fs
+clarabel
