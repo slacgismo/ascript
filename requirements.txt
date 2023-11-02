@@ -7,3 +7,5 @@ marimo
 matplotlib
 s3fs
 clarabel
+plotly
+requests

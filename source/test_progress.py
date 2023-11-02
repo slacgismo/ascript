@@ -26,7 +26,6 @@ def __(mo):
 @app.cell
 def __(
     get_progress,
-    go,
     mo,
     refresh,
     reset_progress,
@@ -34,19 +33,20 @@ def __(
     start_progress,
     stop_progress,
     threads,
+    ui_components,
 ):
     #
     # Progress view
     #
     refresh
-    fig = go.Figure(go.Indicator(
+    fig = ui_components.GoIndicator(
         mode = "gauge+number",
         value = get_progress(),
         domain = {'x': [0, 1], 'y': [0, 1]},
         gauge = {'axis':{'range':[0,100]}},
-        title = {'text': "Progress"}))
-    start = mo.ui.button(label="Start" if get_progress()==0 else "Continue",
-                         disabled=bool(len(threads)!=0),
+        title = {'text': "Progress"})
+    start = mo.ui.button(label="Start" if get_progress() in [0,100] else "Continue",
+                         disabled=bool(len(threads)!=0) or get_progress() == 100,
                          on_click=start_progress if get_progress() == 0 else resume_progress)
     stop = mo.ui.button(label="Stop",
                         disabled=bool(len(threads)==0),
@@ -54,7 +54,7 @@ def __(
     reset = mo.ui.button(label="Reset",
                          disabled=bool(get_progress()==0),
                          on_click=reset_progress)
-    mo.vstack([fig,mo.hstack([start,stop,reset],justify="center")])
+    mo.vstack([fig.get_figure(),mo.hstack([start,stop,reset],justify="center")])
 
     return fig, reset, start, stop
 
@@ -67,7 +67,10 @@ def __(get_progress, set_progress, threading, threads, time):
     def progress_update():
         while len(threads) > 0:
             if get_progress() < 100:
-                set_progress(get_progress()+1)
+                set_progress(get_progress()+10)
+            else:
+                del threads[0]
+                break
             time.sleep(1)
 
     def stop_progress(value):
@@ -104,10 +107,10 @@ def __():
     #
     import marimo as mo
     import time
-    import plotly.graph_objects as go
+    import ui_components
     import threading
     threads = []
-    return go, mo, threading, threads, time
+    return mo, threading, threads, time, ui_components
 
 
 if __name__ == "__main__":
