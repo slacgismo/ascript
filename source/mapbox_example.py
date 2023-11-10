@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.1.43"
+__generated_with = "0.1.47"
 app = marimo.App()
 
 
@@ -34,7 +34,7 @@ def __(mo, px, us_cities):
                                 lon="lon", 
                                 hover_name="City", 
                                 hover_data=["State", "Population"],
-                                color_discrete_sequence=["fuchsia"], 
+                                color_discrete_sequence=["red"], 
                                 zoom=3, 
                                 height=300)
         if satellite:
