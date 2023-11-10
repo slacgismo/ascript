@@ -33,7 +33,9 @@ def __(mo, nodes, px):
                                 lat="latitude", 
                                 lon="longitude", 
                                 hover_name="name", 
-                                hover_data=["class","phases","nominal_voltage","voltage_A","voltage_B","voltage_C"],
+                                hover_data = {"latitude":False,"longitude":False,
+                                              "class":True,"phases":True,"nominal_voltage":True,
+                                              "voltage_A":True,"voltage_B":True,"voltage_C":True},
                                 color_discrete_sequence=["fuchsia"], 
                                 zoom=15)
         if satellite:
@@ -77,6 +79,19 @@ def __(json, mo, os, pd):
             data.reset_index(inplace=True)
             data['latitude'] = [float(x) for x in data['latitude']]
             data['longitude'] = [float(x) for x in data['longitude']]
+            nodes = data.loc[~data["latitude"].isnull()]
+            lines = None # pd.DataFrame(result["lines"])
+            return data,nodes,lines
+        raise Exception("file not found")
+
+    data,nodes,lines = get_nodes("example.glm")
+    mo.ui.table(data)
+    return data, get_nodes, lines, nodes
+
+
+@app.cell(disabled=True)
+def __():
+            # DRAW NODES
             # print(df,file=sys.stderr)
             # result = {"nodes" : [], "lines" : []}
             # for name, data in glm["objects"].items():
@@ -90,14 +105,32 @@ def __(json, mo, os, pd):
             #                 data["class"],
             #             ]
             #         )
-            nodes = data.loc[~data["latitude"].isnull()]
-            lines = None # pd.DataFrame(result["lines"])
-            return data,nodes,lines
-        raise Exception("file not found")
+    return
 
-    data,nodes,lines = get_nodes("example.glm")
-    mo.ui.table(data)
-    return data, get_nodes, lines, nodes
+
+@app.cell(disabled=True)
+def __():
+            # DRAW LINES
+            # import plotly.graph_objects as go
+            # fig = go.Figure()
+            # for _,row in df.iterrows():
+            #     fig.add_trace(go.Scattermapbox(mode='lines',
+            #                                    lon=[row['source_lon'], row['sink_lon']],
+            #                                    lat=[row['source_lat'], row['sink_lat']],
+            #                                    line_color='green',
+            #                                    name=row['source_name']
+            #                                   ))
+            # fig.update_layout(
+            #     height=600,
+            #     mapbox=dict(
+            #         style='open-street-map',
+            #         zoom=4,
+            #         center=dict(lon=df['source_lon'].mean(), lat=df['source_lat'].mean())
+            #     )
+            # )
+            # fig.show()
+
+    return
 
 
 @app.cell
