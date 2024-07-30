@@ -8,7 +8,7 @@ Key capabilities
 - [x] Specify charging infrastructure requirements
 - [x] Specify feeder capacity
 - [x] Generate charging loadshapes
-- [ ] Analyse EV charging impact on loadshapes
+- [ ] Analyze EV charging impact on loadshapes
 - [ ] Display network impacts of loadshape change
 
 ## Setup
