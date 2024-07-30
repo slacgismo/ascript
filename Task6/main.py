@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.5.2"
+__generated_with = "0.7.12"
 app = marimo.App(width="full")
 
 
@@ -22,7 +22,7 @@ def __():
 
 @app.cell
 def __(mo):
-    mo.md("#Advanced Smart Charging Infrastructure Planning Tool (ASCRIPT)")
+    mo.md("""#Advanced Smart Charging Infrastructure Planning Tool (ASCRIPT)""")
     return
 
 
@@ -1926,4 +1926,3 @@ def __(mo, tab1, tab2, tab3, tab4, tab_tariff):
 
 if __name__ == "__main__":
     app.run()
-
