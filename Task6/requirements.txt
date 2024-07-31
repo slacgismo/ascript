@@ -1,5 +1,6 @@
-marimo
+marimo==0.5.2
+plotly
 pandas
 leafmap
-plotly
 seaborn
+matplotlib
