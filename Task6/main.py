@@ -5,56 +5,79 @@ app = marimo.App(width="full")
 
 
 @app.cell
-def __():
-    import marimo as mo
-    import plotly.express as px
-    import pandas as pd
-    import leafmap
-    import seaborn
-    from matplotlib import pyplot
-
-    # May not need the following two lines after marimo releases a new version
-    import plotly.io as pio
-
-    pio.renderers.default = "notebook"
-    return leafmap, mo, pd, pio, px, pyplot, seaborn
-
-
-@app.cell
 def __(mo):
     mo.md("""#Advanced Smart Charging Infrastructure Planning Tool (ASCRIPT)""")
     return
 
 
 @app.cell
-def __(mo):
+def __(dt):
+    #
+    # App Configuration
+    #
+    START_YEAR = 2030
+    STOP_YEAR = 2035
+    DEFAULT_YEAR = min(STOP_YEAR,max(START_YEAR,dt.datetime.now().year+10))
+
+    STATES = ["CA"]
+    DEFAULT_STATE = "CA"
+    DEFAULT_COUNTY = "Santa Clara County"
+
+    MAX_EVS = 3000000
+    DEFAULT_EVS = 500000
+    UI_EVS_STEP = 100
+
+    MAX_CHARGERS = 3000000
+    DEFAULT_CHARGERS = 30500
+    UI_CHARGERS_STEP = 10
+    return (
+        DEFAULT_CHARGERS,
+        DEFAULT_COUNTY,
+        DEFAULT_EVS,
+        DEFAULT_STATE,
+        DEFAULT_YEAR,
+        MAX_CHARGERS,
+        MAX_EVS,
+        START_YEAR,
+        STATES,
+        STOP_YEAR,
+        UI_CHARGERS_STEP,
+        UI_EVS_STEP,
+    )
+
+
+@app.cell
+def __(
+    DEFAULT_COUNTY,
+    DEFAULT_STATE,
+    DEFAULT_YEAR,
+    START_YEAR,
+    STOP_YEAR,
+    mo,
+    pd,
+):
     # Inputs for Charging Segments
     # Aggregation level
     dropdown_agg = mo.ui.dropdown(
         options=["State", "County", "City"], value="County"
     )
 
+    # List of counties in state
+    # Source: https://data.cnra.ca.gov/dataset/california-counties1/resource/043378eb-eefd-46dc-92e3-46335a169bee?inner_span=True
+    county_data = pd.read_csv(f"counties/{DEFAULT_STATE}.csv")
+
     # List of county can get through SG2T
     # May be relevant: https://github.com/slacgismo/SCRIPT/blob/master/UploadToCounty/UploadToPostgresCountiesZips.py
     # Region
     dropdown_region = mo.ui.dropdown(
-        options=[
-            "Alameda",
-            "Contra Costa",
-            "Marin",
-            "Napa",
-            "San Francisco",
-            "San Mateo",
-            "Santa Clara",
-            "Solano",
-            "Sonoma",
-        ],
-        value="Santa Clara",
+        options=county_data.NAME.to_list(),
+        value=DEFAULT_COUNTY,
     )
 
     # Target year of analysis
     dropdown_year = mo.ui.dropdown(
-        options=["2030", "2031", "2032", "2033", "2034", "2035"], value="2034"
+        options=[str(x) for x in range(START_YEAR,STOP_YEAR+1)], 
+        value=str(DEFAULT_YEAR)
     )
 
     # Initial guess of the number of EVs and chargers based on the region and year
@@ -62,6 +85,7 @@ def __(mo):
     num_number_ev = mo.ui.number(start=0, stop=3000000, step=100, value=500000)
     num_number_charger = mo.ui.number(start=0, stop=3000000, step=10, value=30500)
     return (
+        county_data,
         dropdown_agg,
         dropdown_region,
         dropdown_year,
@@ -74,31 +98,31 @@ def __(mo):
 def __(mo, num_number_charger):
     # Variables: number of chargers; pub: public, work: workplace, res: residential
     num_pub_l1 = mo.ui.number(
-        start=0, step=1, stop=num_number_charger.value, value=0
+        start=0, step=1, stop=num_number_charger.value, value=0, debounce=True
     )
     num_pub_l2 = mo.ui.number(
-        start=0, step=1, stop=num_number_charger.value, value=9028
+        start=0, step=1, stop=num_number_charger.value, value=9028, debounce=True
     )
     num_pub_l3 = mo.ui.number(
-        start=0, step=1, stop=num_number_charger.value, value=2257
+        start=0, step=1, stop=num_number_charger.value, value=2257, debounce=True
     )
     num_work_l1 = mo.ui.number(
-        start=0, step=1, stop=num_number_charger.value, value=0
+        start=0, step=1, stop=num_number_charger.value, value=0, debounce=True
     )
     num_work_l2 = mo.ui.number(
-        start=0, step=1, stop=num_number_charger.value, value=9150
+        start=0, step=1, stop=num_number_charger.value, value=9150, debounce=True
     )
     num_work_l3 = mo.ui.number(
-        start=0, step=1, stop=num_number_charger.value, value=0
+        start=0, step=1, stop=num_number_charger.value, value=0, debounce=True
     )
     num_res_l1 = mo.ui.number(
-        start=0, step=1, stop=num_number_charger.value, value=2013
+        start=0, step=1, stop=num_number_charger.value, value=2013, debounce=True
     )
     num_res_l2 = mo.ui.number(
-        start=0, step=1, stop=num_number_charger.value, value=8052
+        start=0, step=1, stop=num_number_charger.value, value=8052, debounce=True
     )
     num_res_l3 = mo.ui.number(
-        start=0, step=1, stop=num_number_charger.value, value=0
+        start=0, step=1, stop=num_number_charger.value, value=0, debounce=True
     )
 
     # Radio button to let the user select from (1) setting a ratio to the total number of chargers at each location or (2) specifying the exact number along with their types. The table for charger number setting updates based on this selection.
@@ -142,20 +166,20 @@ def __(mo):
 @app.cell
 def __(mo):
     # UI elements for setting the number of chargers by ratio
-    ratio_charger_pub = mo.ui.number(start=0, stop=100, step=1, value=37)
-    ratio_charger_pub_l1 = mo.ui.number(start=0, stop=100, step=1, value=0)
-    ratio_charger_pub_l2 = mo.ui.number(start=0, stop=100, step=1, value=80)
-    ratio_charger_pub_l3 = mo.ui.number(start=0, stop=100, step=1, value=20)
+    ratio_charger_pub = mo.ui.number(start=0, stop=100, step=1, value=37, debounce=True)
+    ratio_charger_pub_l1 = mo.ui.number(start=0, stop=100, step=1, value=0, debounce=True)
+    ratio_charger_pub_l2 = mo.ui.number(start=0, stop=100, step=1, value=80, debounce=True)
+    ratio_charger_pub_l3 = mo.ui.number(start=0, stop=100, step=1, value=20, debounce=True)
 
-    ratio_charger_work = mo.ui.number(start=0, stop=100, step=1, value=30)
-    ratio_charger_work_l1 = mo.ui.number(start=0, stop=100, step=1, value=0)
-    ratio_charger_work_l2 = mo.ui.number(start=0, stop=100, step=1, value=100)
-    ratio_charger_work_l3 = mo.ui.number(start=0, stop=100, step=1, value=0)
+    ratio_charger_work = mo.ui.number(start=0, stop=100, step=1, value=30, debounce=True)
+    ratio_charger_work_l1 = mo.ui.number(start=0, stop=100, step=1, value=0, debounce=True)
+    ratio_charger_work_l2 = mo.ui.number(start=0, stop=100, step=1, value=100, debounce=True)
+    ratio_charger_work_l3 = mo.ui.number(start=0, stop=100, step=1, value=0, debounce=True)
 
-    ratio_charger_res = mo.ui.number(start=0, stop=100, step=1, value=33)
-    ratio_charger_res_l1 = mo.ui.number(start=0, stop=100, step=1, value=20)
-    ratio_charger_res_l2 = mo.ui.number(start=0, stop=100, step=1, value=80)
-    ratio_charger_res_l3 = mo.ui.number(start=0, stop=100, step=1, value=0)
+    ratio_charger_res = mo.ui.number(start=0, stop=100, step=1, value=33, debounce=True)
+    ratio_charger_res_l1 = mo.ui.number(start=0, stop=100, step=1, value=20, debounce=True)
+    ratio_charger_res_l2 = mo.ui.number(start=0, stop=100, step=1, value=80, debounce=True)
+    ratio_charger_res_l3 = mo.ui.number(start=0, stop=100, step=1, value=0, debounce=True)
     return (
         ratio_charger_pub,
         ratio_charger_pub_l1,
@@ -561,8 +585,9 @@ def __(mo, pd):
     )
     table_meter = mo.ui.table(data=df_meter, selection=None)
 
-    tabs_feeder = mo.tabs(
-        {"Distribution System": table_network, "Meter": table_meter}
+    tabs_feeder = mo.ui.tabs(
+        {"Distribution System": table_network, "Meter": table_meter},
+        lazy = True,
     )
     return (
         button_network_ini,
@@ -1787,12 +1812,13 @@ def __(
 @app.cell
 def __(mo, tab_tariff_pub, tab_tariff_res, tab_tariff_work):
     # Tab for Tariff
-    tab_tariff = mo.tabs(
+    tab_tariff = mo.ui.tabs(
         {
             "Public": tab_tariff_pub,
             "Workplace": tab_tariff_work,
             "Residential": tab_tariff_res,
-        }
+        },
+        lazy = True,
     )
     return tab_tariff,
 
@@ -1912,16 +1938,34 @@ def __(
 
 @app.cell
 def __(mo, tab1, tab2, tab3, tab4, tab_tariff):
-    mo.tabs(
+    mo.ui.tabs(
         {
             "Scenario": tab1,
             "Analysis": tab2,
             "Tariff": tab_tariff,
             "Map": tab3,
             "Report": tab4,
-        }
+        },
+        lazy = True,
     )
     return
+
+
+@app.cell
+def __():
+    import marimo as mo
+    import datetime as dt
+    import plotly.express as px
+    import pandas as pd
+    import leafmap
+    import seaborn
+    from matplotlib import pyplot
+
+    # May not need the following two lines after marimo releases a new version
+    import plotly.io as pio
+
+    pio.renderers.default = "notebook"
+    return dt, leafmap, mo, pd, pio, px, pyplot, seaborn
 
 
 if __name__ == "__main__":
