@@ -1,4 +1,4 @@
-marimo==0.5.2
+marimo
 plotly
 pandas
 leafmap

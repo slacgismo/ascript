@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.7.12"
+__generated_with = "0.7.19"
 app = marimo.App(width="full", app_title="")
 
 
@@ -40,6 +40,22 @@ def __(
 
 
 @app.cell
+def __(config, pd):
+    county_data = pd.read_csv(f"counties/{config.DEFAULT_STATE}.csv")
+    cities = pd.read_csv(
+            "CA_cities.csv",
+            usecols=[0,2,3],
+            index_col=[1,0]
+        ).sort_index()
+    city_data = {x:[] for x in cities.index.get_level_values(0).unique()}
+    for _county in list(city_data):
+        city_data[f"{_county} County"] = {}
+        for _city in cities.loc[_county].index:
+            city_data[f"{_county} County"][_city] = float(cities.loc[_county,_city]["Population(2020)"])
+    return cities, city_data, county_data
+
+
+@app.cell
 def __(config, mo):
     #
     # Aggregation level and location
@@ -59,15 +75,7 @@ def __(config, mo):
 
 
 @app.cell
-def __(
-    config,
-    get_aggregation_level,
-    get_state,
-    mo,
-    pd,
-    set_aggregation_level,
-    set_state,
-):
+def __(get_aggregation_level, mo, set_aggregation_level):
     aggregation_level_ui = mo.ui.radio(
         label="Aggregation level:",
         options=["State", "County", "City"],
@@ -75,7 +83,11 @@ def __(
         value=get_aggregation_level(),
         on_change=set_aggregation_level,
     )
+    return aggregation_level_ui,
 
+
+@app.cell
+def __(config, get_state, mo, set_state):
     state_ui = mo.ui.dropdown(
         label="State:",
         options=config.STATES,
@@ -83,38 +95,54 @@ def __(
         on_change=set_state,
         allow_select_none=False,
     )
-
-    county_data = pd.read_csv(f"counties/{config.DEFAULT_STATE}.csv")
-    county_ui = mo.ui.dropdown(
-        label="County:",
-        options=county_data.NAME.to_list() if get_aggregation_level() in ["County","City"] else [], 
-        value=config.DEFAULT_LOCATION if get_aggregation_level() in ["County","City"] else None,
-    )
-
-    # TODO: get cities in county
-    city_data = pd.DataFrame([],columns=["NAME"])
-    city_ui = mo.ui.dropdown(
-        label="City:",
-        options=city_data if get_aggregation_level in ["City"] else [],
-        value = None,
-    )
-    return (
-        aggregation_level_ui,
-        city_data,
-        city_ui,
-        county_data,
-        county_ui,
-        state_ui,
-    )
+    return state_ui,
 
 
 @app.cell
-def __(aggregation_level_ui, city_ui, county_ui, mo, state_ui):
+def __(config, county_data, mo, set_location):
+    county_ui = mo.ui.dropdown(
+        label="County:",
+        options=county_data.NAME.to_list(), 
+        value=config.DEFAULT_LOCATION,
+        on_change=set_location,
+    )
+    return county_ui,
+
+
+@app.cell
+def __(city_data, get_location, mo):
+    city_ui = mo.ui.dropdown(
+        label="City:",
+        options=city_data[get_location()].keys(),
+        value = list(city_data[get_location()])[0],
+    )
+    return city_ui,
+
+
+@app.cell
+def __(
+    aggregation_level_ui,
+    cities,
+    city_ui,
+    county_ui,
+    get_aggregation_level,
+    get_location,
+    mo,
+    state_ui,
+):
+    if get_aggregation_level() == "state":
+        population = cities["Population(2020)"].sum()
+    elif get_aggregation_level() == "county":
+        population = cities.loc[get_location().replace(" County","")]["Population(2020)"].sum()
+    else:
+        population = cities.loc[get_location().replace(" County",""),city_ui.value]["Population(2020)"].sum()
+        
     location_items = mo.vstack([
         mo.md("""Set the aggregation level to be an entire state, a specific county, or a city."""),
         mo.hstack([aggregation_level_ui,state_ui,county_ui,city_ui],justify="space-between"),
+        mo.md(f"""Population: {population:,.0f}""")
     ])
-    return location_items,
+    return location_items, population
 
 
 @app.cell
@@ -124,8 +152,8 @@ def __(config, mo):
     #
 
     get_year,set_year = mo.state(config.DEFAULT_YEAR)
-    get_number_evs,set_number_evs = mo.state(config.DEFAULT_EVS)
-    get_number_chargers,set_number_chargers = mo.state(config.DEFAULT_CHARGERS)
+    get_number_evs,set_number_evs = mo.state(0.0)
+    get_number_chargers,set_number_chargers = mo.state(0.0)
     return (
         get_number_chargers,
         get_number_evs,
@@ -139,6 +167,7 @@ def __(config, mo):
 @app.cell
 def __(
     config,
+    dt,
     get_number_chargers,
     get_number_evs,
     get_year,
@@ -147,37 +176,80 @@ def __(
     set_number_evs,
     set_year,
 ):
+    full_adoption_year_ui = mo.ui.slider(
+        label="Full EV adoption year:",
+        start=dt.datetime.now().year,
+        stop=dt.datetime.now().year + 50,
+        value=dt.datetime.now().year + 20,
+        show_value=True,
+        debounce=True,
+    )
+    peak_adoption_year_ui = mo.ui.slider(
+        label="Peak EV adoption year:",
+        start=dt.datetime.now().year,
+        stop=dt.datetime.now().year + 50,
+        value=dt.datetime.now().year + 10,
+        show_value=True,
+        debounce=True,
+    )
+    adoption_rate_ui = mo.ui.slider(
+        label="Peak adoption rate:",
+        start=0.0,
+        stop=1.0,
+        step=0.01,
+        value=0.10,
+        show_value=True,
+        debounce=True,
+    )
     year_ui = mo.ui.dropdown(
-        label="Year:",
+        label="Study year:",
         value=str(get_year()),
-        options=[str(x) for x in range(config.START_YEAR,config.STOP_YEAR+1)],
+        options=[str(x) for x in range(config.START_YEAR, config.STOP_YEAR + 1)],
         on_change=set_year,
     )
-    number_evs_ui = mo.ui.number(
-        label="Number of EVs: ",
+    number_evs_ui = mo.ui.slider(
+        label="Number of EVs per capita: ",
         value=get_number_evs(),
-        start=0,
-        stop=config.MAX_EVS,
-        step=config.UI_EVS_STEP,
+        start=0.0,
+        stop=2.0,
+        step=0.1,
         on_change=set_number_evs,
         debounce=True,
+        show_value=True,
     )
-    number_chargers_ui = mo.ui.number(
-        label="Number of chargers: ",
+    number_chargers_ui = mo.ui.slider(
+        label="Number of chargers per capita: ",
         value=get_number_chargers(),
-        start=0,
-        stop=config.MAX_CHARGERS,
-        step=config.UI_CHARGERS_STEP,
+        start=0.0,
+        stop=2.0,
+        step=0.1,
         on_change=set_number_chargers,
         debounce=True,
+        show_value=True,
     )
-    return number_chargers_ui, number_evs_ui, year_ui
+    return (
+        adoption_rate_ui,
+        full_adoption_year_ui,
+        number_chargers_ui,
+        number_evs_ui,
+        peak_adoption_year_ui,
+        year_ui,
+    )
 
 
 @app.cell
-def __(mo, number_chargers_ui, number_evs_ui, year_ui):
+def __(
+    adoption_rate_ui,
+    full_adoption_year_ui,
+    mo,
+    number_chargers_ui,
+    number_evs_ui,
+    peak_adoption_year_ui,
+    year_ui,
+):
     charger_items = mo.vstack([
         mo.md("""Specify your scenario by selecting the region, targeted year, percentage or number of EV chargers, and rate structures."""),
+        mo.hstack([full_adoption_year_ui,peak_adoption_year_ui,adoption_rate_ui],justify='space-between'),
         mo.hstack([year_ui,number_evs_ui,number_chargers_ui],justify='space-between'),
     ])
     return charger_items,
@@ -338,7 +410,6 @@ def __(
         debounce=True,
         show_value=True,
     )
-
     return (
         public_count_ui,
         public_fraction_ui,
@@ -410,9 +481,10 @@ def __(mo):
 @app.cell
 def __():
     import marimo as mo
+    import datetime as dt
     import pandas as pd
     import config
-    return config, mo, pd
+    return config, dt, mo, pd
 
 
 if __name__ == "__main__":
