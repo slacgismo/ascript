@@ -23,8 +23,17 @@ def __(
     mo,
     number_chargers_ui,
     number_evs_ui,
+    public_fraction_ui,
+    public_rate_ui,
+    public_tariff_ui,
+    residential_fraction_ui,
+    residential_rate_ui,
+    residential_tariff_ui,
     state_ui,
     substation_ui,
+    workplace_fraction_ui,
+    workplace_rate_ui,
+    workplace_tariff_ui,
     year_ui,
 ):
     substations = substation_ui.value.ZIP.to_dict()
@@ -42,6 +51,9 @@ def __(
     <tr><td>Number of chargers</td><td>{number_chargers_ui.value:,.0f}</td></tr>
 
     <tr><th><i>Supply</i><hr/></th><td>&nbsp;<hr/></td></tr>
+    <tr><th>Public</th><td>{public_fraction_ui.value}% {public_tariff_ui.value}<br/>{public_rate_ui.value}</td></tr>
+    <tr><th>Workplace</th><td>{workplace_fraction_ui.value}% {workplace_tariff_ui.value}<br/>{workplace_rate_ui.value}</td></tr>
+    <tr><th>Residential</th><td>{residential_fraction_ui.value}% {residential_tariff_ui.value}<br/>{residential_rate_ui.value}</td></tr>
 
     <tr><th><i>Feeders</i><hr/></th><td>&nbsp;<hr/></td></tr>
 
@@ -234,7 +246,22 @@ def __(
 
 
 @app.cell
-def __(dt, mo):
+def __(mo):
+    ev_adoption_ui = mo.ui.dropdown(
+        label="EV adoption:",
+        value="Low (100-1,000)",
+        options={"Low (100-1,000)":1000,
+                 "Medium (1,000-10,000)":10000,
+                 "High (10,000-100,000)":100000,
+                 "Very high (100,000-1,000,000)":1000000,
+        },
+        allow_select_none=False,
+    )
+    return ev_adoption_ui,
+
+
+@app.cell
+def __(dt, ev_adoption_ui, mo):
     year_ui = mo.ui.dropdown(
         label="Study year:",
         value=str(dt.datetime.now().year+10),
@@ -242,19 +269,19 @@ def __(dt, mo):
     )
     number_evs_ui = mo.ui.slider(
         label="Number of EVs: ",
-        value=0,
-        start=0,
-        stop=100000,
-        step=1000,
+        value=float(ev_adoption_ui.value)/2,
+        start=float(ev_adoption_ui.value)/10,
+        stop=float(ev_adoption_ui.value),
+        step=float(ev_adoption_ui.value)/100,
         debounce=True,
         show_value=True,
     )
     number_chargers_ui = mo.ui.slider(
         label="Number of chargers: ",
-        value=0,
-        start=0,
-        stop=100000,
-        step=1000,
+        value=float(ev_adoption_ui.value)/2,
+        start=float(ev_adoption_ui.value)/10,
+        stop=float(ev_adoption_ui.value),
+        step=float(ev_adoption_ui.value)/100,
         debounce=True,
         show_value=True,
     )
@@ -262,11 +289,11 @@ def __(dt, mo):
 
 
 @app.cell
-def __(mo, number_chargers_ui, number_evs_ui, year_ui):
+def __(ev_adoption_ui, mo, number_chargers_ui, number_evs_ui, year_ui):
     charger_items = mo.vstack([
-        mo.md("""Specify your scenario by selecting the region, targeted year, percentage or number of EV chargers, and rate structures."""),
+        mo.md("""Specify the study year, EV adoption rate, number of EV, and chargers."""),
         # mo.hstack([full_adoption_year_ui,peak_adoption_year_ui,adoption_rate_ui],justify='space-between'),
-        mo.hstack([year_ui,number_evs_ui,number_chargers_ui],justify='space-between'),
+        mo.hstack([year_ui,ev_adoption_ui,number_evs_ui,number_chargers_ui],justify='space-between'),
     ])
     return charger_items,
 
@@ -301,6 +328,9 @@ def __(config, mo):
 
 @app.cell
 def __(pd):
+    #
+    # Download NREL OpenEI tariff database
+    #
     tariff_data = pd.read_csv(
         "https://openei.org/apps/USURDB/download/usurdb.csv.gz",
         low_memory=False,
@@ -310,47 +340,11 @@ def __(pd):
 
 
 @app.cell
-def __(defaults, mo, state_ui, tariff_data):
-    _utilities = {"CA":[
-        "City of Alameda, California (Utility Company)",
-        "City of Anaheim, California (Utility Company)",
-        "City of Azusa, California (Utility Company)",
-        "City of Banning, California (Utility Company)",
-        "City of Biggs, California (Utility Company)",
-        "City of Burbank Water and Power, California (Utility Company)",
-        "City of Colton, California (Utility Company)",
-        "City of Corona, California (Utility Company)",
-        "Direct Energy Services",
-        "East Bay Municipal Util Dist",
-        "East Bay Community Energy",
-        "City of Escondido, California (Utility Company)",
-        "City of Glendale, California (Utility Company)",
-        "City of Gridley, California (Utility Company)",
-        "City of Healdsburg, California (Utility Company)",
-        "Imperial Irrigation District",
-        "Island Energy",
-        "Modesto Irrigation District",
-        "City of Lodi, California (Utility Company)",
-        "City of Lompoc, California (Utility Company)",
-        "Los Angeles Department of Water and Power",
-        "City of Moreno, California (Utility Company)",
-        "City of Needles, California (Utility Company)",
-        "Nevada Irrigation District",
-        "O'Brien Cogeneration",
-        "City of Palo Alto, California (Utility Company)",
-        "Pacific Gas & Electric Co",
-        "City of Pasadena, California (Utility Company)",
-        "Pacific Power (California)",
-        "City of Riverside, California (Utility Company)",
-        "Sacramento Municipal Utility District",
-        "San Diego Gas & Electric Co",
-        "City & County of San Francisco (Utility Company)",
-        "City of Santa Clara, California (Utility Company)",
-        "Sierra Pacific Power Co",
-        "Southern California Edison Co",
-        "Southern California P P A",
-        "Turlock Irrigation District",
-    ]}
+def __(defaults, json, mo, state_ui, tariff_data):
+    #
+    # Read state utility database
+    #
+    _utilities = json.load(open("utilities.json","r"))
     _utilities = [x for x in _utilities[state_ui.value] if x in tariff_data.index.get_level_values(0).unique()]
     utility_ui = mo.ui.dropdown(
         label="Utility name:",
@@ -363,23 +357,53 @@ def __(defaults, mo, state_ui, tariff_data):
 
 @app.cell
 def __(mo, tariff_data, utility_ui):
-    _tariffs = tariff_data.loc[utility_ui.value,"Residential"]
+    #
+    # Tariff UI elements
+    #
+    _options=tariff_data.loc[utility_ui.value].index.get_level_values(0).unique()
+    residential_tariff_ui = mo.ui.dropdown(
+        options=_options,
+        value=("Residential" if "Residential" in _options else _options[0])
+    )
+    workplace_tariff_ui = mo.ui.dropdown(
+        options=_options,
+        value=("Commercial" if "Commercial" in _options else _options[0])
+    )
+    public_tariff_ui = mo.ui.dropdown(
+        options=_options,
+        value=("Commercial" if "Commercial" in _options else _options[0])
+    )
+    return public_tariff_ui, residential_tariff_ui, workplace_tariff_ui
+
+
+@app.cell
+def __(
+    mo,
+    public_tariff_ui,
+    residential_tariff_ui,
+    tariff_data,
+    utility_ui,
+    workplace_tariff_ui,
+):
+    #
+    # Rate UI elements
+    #
+    _tariffs = tariff_data.loc[utility_ui.value,residential_tariff_ui.value]
     residential_rate_ui = mo.ui.dropdown(
         options=_tariffs.index,
         value=_tariffs.index[0],
     )
-    _tariffs = tariff_data.loc[utility_ui.value,"Commercial"]
-    commercial_rate_ui = mo.ui.dropdown(
+    _tariffs = tariff_data.loc[utility_ui.value,workplace_tariff_ui.value]
+    workplace_rate_ui = mo.ui.dropdown(
         options=_tariffs.index,
         value=_tariffs.index[0],
     )
-    _tariffs = tariff_data.loc[utility_ui.value,"Commercial"]
+    _tariffs = tariff_data.loc[utility_ui.value,public_tariff_ui.value]
     public_rate_ui = mo.ui.dropdown(
         options=_tariffs.index,
         value=_tariffs.index[0],
     )
-
-    return commercial_rate_ui, public_rate_ui, residential_rate_ui
+    return public_rate_ui, residential_rate_ui, workplace_rate_ui
 
 
 @app.cell
@@ -392,6 +416,9 @@ def __(
     set_residential_fraction,
     set_workplace_fraction,
 ):
+    #
+    # Charger sector fractions
+    #
     def _set_public_fraction(x):
         total = get_workplace_fraction() + get_residential_fraction()
         set_workplace_fraction(round(get_workplace_fraction()*(100-x)/total))
@@ -443,23 +470,44 @@ def __(
 
 @app.cell
 def __(
-    commercial_rate_ui,
     mo,
     number_chargers_ui,
     public_fraction_ui,
     public_rate_ui,
+    public_tariff_ui,
     residential_fraction_ui,
     residential_rate_ui,
+    residential_tariff_ui,
     utility_ui,
     workplace_fraction_ui,
+    workplace_rate_ui,
+    workplace_tariff_ui,
 ):
+    #
+    # Charger supply UI
+    #
     tariff_items = mo.vstack([
         mo.md(f"""Specify the charger types and tariffs for {utility_ui}
         <table>
-        <tr><th>Location</th><th>Fraction</th><th>Count</th><th>Tariff</th></tr>
-        <tr><td>Public</td><td>{public_fraction_ui}%</td><td>{public_fraction_ui.value*number_chargers_ui.value/100:,.0f}</td><td>{public_rate_ui}</td></tr>
-        <tr><td>Workplace</td><td>{workplace_fraction_ui}%</td><td>{workplace_fraction_ui.value*number_chargers_ui.value/100:,.0f}</td><td>{commercial_rate_ui}</td></tr>
-        <tr><td>Residential</td><td>{residential_fraction_ui}%</td><td>{residential_fraction_ui.value*number_chargers_ui.value/100:,.0f}</td><td>{residential_rate_ui}</td></tr>
+        <tr><th>Location</th><th>Fraction</th><th>Count</th><th>Sector</th><th>Tariff</th></tr>
+        <tr><td>Public</td>
+            <td>{public_fraction_ui}%</td>
+            <td>{public_fraction_ui.value*number_chargers_ui.value/100:,.0f}</td>
+            <td>{public_tariff_ui}</td>
+            <td>{public_rate_ui}</td>
+        </tr>
+        <tr><td>Workplace</td>
+            <td>{workplace_fraction_ui}%</td>
+            <td>{workplace_fraction_ui.value*number_chargers_ui.value/100:,.0f}</td>
+            <td>{workplace_tariff_ui}</td>
+            <td>{workplace_rate_ui}</td>
+        </tr>
+        <tr><td>Residential</td>
+            <td>{residential_fraction_ui}%</td>
+            <td>{residential_fraction_ui.value*number_chargers_ui.value/100:,.0f}</td>
+            <td>{residential_tariff_ui}</td>
+            <td>{residential_rate_ui}</td>
+        </tr>
         </table>
     """),
         # mo.hstack([public_ui,workplace_ui,residential_ui]),
@@ -507,8 +555,9 @@ def __():
     import marimo as mo
     import datetime as dt
     import pandas as pd
+    import json
     import config
-    return config, dt, mo, pd
+    return config, dt, json, mo, pd
 
 
 if __name__ == "__main__":
