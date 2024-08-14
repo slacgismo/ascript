@@ -4,6 +4,7 @@ Sources:
 	Residential - https://data.openei.org/s3_viewer?bucket=oedi-data-lake&prefix=nrel-pds-building-stock%2Fend-use-load-profiles-for-us-building-stock%2F2021%2Fresstock_amy2018_release_1%2F
 	Commercial - https://data.openei.org/s3_viewer?bucket=oedi-data-lake&prefix=nrel-pds-building-stock%2Fend-use-load-profiles-for-us-building-stock%2F2021%2Fcomstock_amy2018_release_1%2F
 """
+import datetime as dt
 import pandas as pd
 import json
 
@@ -186,24 +187,36 @@ ASSUMPTIONS = {
 	"residential" : {
 		"growth" : 0.03,
 		"electrification" : {
-			"oil" : 1.0,
-			"gas" : 1.0,
-			"propane" : 1.0,
+			"oil" : 0.5,
+			"gas" : 0.5,
+			"propane" : 0.5,
 		},
-		"efficiency" : {
-			"oil" : 1.0,
-			"gas" : 1.0,
-			"propane" : 1.0,
-		},
+		"efficiency" : 0.5,
 	},
 	"commercial" : {
 		"growth" : 0.03,
 		"electrification" : {
-			"gas" : 1.0,
+			"gas" : 0.5,
 		},
-		"efficiency" : {
-			"gas" : 1.0,
-		}
+		"efficiency" : 0.5,
+	}
+}
+BASECASE = {
+	"residential" : {
+		"growth" : 0.0,
+		"electrification" : {
+			"oil" : 0.0,
+			"gas" : 0.0,
+			"propane" : 0.0,
+		},
+		"efficiency" : 100.0,
+	},
+	"commercial" : {
+		"growth" : 0.0,
+		"electrification" : {
+			"gas" : 0.0,
+		},
+		"efficiency" : 100.0,
 	}
 }
 
@@ -312,29 +325,29 @@ def get_forecast(year,state,county,sectors=None,building_types=None,assumptions=
 	total = None
 	if "residential" in sectors:
 		res = get_residential(state,county,{x:1.0 for x in building_types["residential"]}).copy()
-		res *= (1+assumptions["residential"]["growth"])
+		res *= pow((1+assumptions["residential"]["growth"]),year-REFYEAR)
 		for fuel,rate in assumptions["residential"]["electrification"].items():
-			res['electric[kW]'] += res[fuel+"[kW]"]*rate/assumptions["residential"]["efficiency"][fuel]
+			res['electric[kW]'] += res[fuel+"[kW]"]*rate/assumptions["residential"]["efficiency"]
 			res[fuel+"[kW]"] *= (1-rate)
 		total = res
 	if "commercial" in sectors:
 		com = get_commercial(state,county,{x:1.0 for x in building_types["commercial"]}).copy()
 		com *= (1+assumptions["commercial"]["growth"])
 		for fuel,rate in assumptions["commercial"]["electrification"].items():
-			com['electric[kW]'] += com[fuel+"[kW]"]*rate/assumptions["commercial"]["efficiency"][fuel]
+			com['electric[kW]'] += com[fuel+"[kW]"]*rate/assumptions["commercial"]["efficiency"]
 			com[fuel+"[kW]"] *= (1-rate)
 		for fuel in assumptions["residential"]["electrification"]:
 			if not fuel+"[kW]" in com.columns:
 				com[fuel+"[kW]"] = 0.0
 		total = com if total is None else res+com
-	return total
+		shift = dt.datetime(year,1,1) - dt.datetime(REFYEAR,1,1)
+		total.index += shift
+	return total.round(1)
 
 if __name__ == "__main__":
 
 	pd.options.display.max_columns = None
 	pd.options.display.width = None
-	print(get_forecast(2034,"CA","Alameda County"))
-	quit()
 
 	# verify the data can be retrieved and hasn't changed
 	assert(len(get_states())==51)
@@ -344,3 +357,8 @@ if __name__ == "__main__":
 	assert(get_residential("CA","San Mateo County",HOUSE)["electric[kW]"].iloc[0]==182601.2)
 	assert(len(get_commercial("CA","San Mateo County",LARGEOFFICE))==8760)
 	assert(get_commercial("CA","San Mateo County",LARGEOFFICE)["electric[kW]"].iloc[0]==12119.8)
+	assert(get_forecast(2034,"CA","Alameda County")["electric[kW]"].iloc[0]==1477698.1)
+	assert(get_forecast(2034,"CA","Alameda County",assumptions=BASECASE)["electric[kW]"].max()==933380.7)
+	assert(get_forecast(2034,"CA","Alameda County")["electric[kW]"].max()==2196725.9)
+
+
