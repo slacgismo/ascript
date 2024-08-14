@@ -150,6 +150,6 @@ if __name__ == "__main__":
 	print(get_states())
 	print(get_counties("CA"))
 	print(get_weather("CA","Alameda County"))
-	print(get_residential("CA","San Mateo County"),HOUSE)
+	print(get_residential("CA","San Mateo County",HOUSE))
 	print(get_commercial("CA","San Mateo County",LARGEOFFICE))
 
