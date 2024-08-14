@@ -669,7 +669,7 @@ def __(import_capacity_ui, load, mo):
         label=f"""Fraction of peak load served (% of {load["electric[kW]"].max()/1000:.1f} MW)""",
         start=0,
         stop=100,
-        value=min(100,round(import_capacity_ui.value/(load["electric[kW]"].max()/1000)*100,0)),
+        value=min(100,round(import_capacity_ui.value/(load["electric[kW]"].max()/1000)*85,0)),
         debounce=True,
         show_value=True,
     )
