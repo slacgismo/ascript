@@ -181,6 +181,32 @@ SMALLHOTEL = "smallhotel"
 SMALLOFFICE = "smalloffice"
 WAREHOUSE = "warehouse"
 
+# forecasting assumptions
+ASSUMPTIONS = {
+	"residential" : {
+		"growth" : 0.03,
+		"electrification" : {
+			"oil" : 1.0,
+			"gas" : 1.0,
+			"propane" : 1.0,
+		},
+		"efficiency" : {
+			"oil" : 1.0,
+			"gas" : 1.0,
+			"propane" : 1.0,
+		},
+	},
+	"commercial" : {
+		"growth" : 0.03,
+		"electrification" : {
+			"gas" : 1.0,
+		},
+		"efficiency" : {
+			"gas" : 1.0,
+		}
+	}
+}
+
 def get_states():
 	"""Get list of states"""
 	return list(COUNTYFIPS.index.get_level_values(0).unique())
@@ -269,10 +295,46 @@ def get_commercial(state,county,building_type=None):
 			result += data*wt
 	return result.round(1)
 
+def get_forecast(year,state,county,sectors=None,building_types=None,assumptions=None):
+
+	# get defaults
+	if sectors is None:
+		sectors = ["residential","commercial"]
+	if building_types is None:
+		building_types = {x:get_buildings(x) for x in sectors}
+	if assumptions is None:
+		assumptions = {x:{} for x in sectors}
+	for sector in assumptions:
+		for key,value in ASSUMPTIONS[sector].items():
+			if key not in assumptions[sector]:
+				assumptions[sector][key] = value
+
+	total = None
+	if "residential" in sectors:
+		res = get_residential(state,county,{x:1.0 for x in building_types["residential"]}).copy()
+		res *= (1+assumptions["residential"]["growth"])
+		for fuel,rate in assumptions["residential"]["electrification"].items():
+			res['electric[kW]'] += res[fuel+"[kW]"]*rate/assumptions["residential"]["efficiency"][fuel]
+			res[fuel+"[kW]"] *= (1-rate)
+		total = res
+	if "commercial" in sectors:
+		com = get_commercial(state,county,{x:1.0 for x in building_types["commercial"]}).copy()
+		com *= (1+assumptions["commercial"]["growth"])
+		for fuel,rate in assumptions["commercial"]["electrification"].items():
+			com['electric[kW]'] += com[fuel+"[kW]"]*rate/assumptions["commercial"]["efficiency"][fuel]
+			com[fuel+"[kW]"] *= (1-rate)
+		for fuel in assumptions["residential"]["electrification"]:
+			if not fuel+"[kW]" in com.columns:
+				com[fuel+"[kW]"] = 0.0
+		total = com if total is None else res+com
+	return total
+
 if __name__ == "__main__":
 
-	# pd.options.display.max_columns = None
-	# pd.options.display.width = None
+	pd.options.display.max_columns = None
+	pd.options.display.width = None
+	print(get_forecast(2034,"CA","Alameda County"))
+	quit()
 
 	# verify the data can be retrieved and hasn't changed
 	assert(len(get_states())==51)
