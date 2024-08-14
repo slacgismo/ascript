@@ -146,9 +146,10 @@ def get_commercial(state,county,building_type=None):
 			result += data*wt
 	return result.round(1)
 
-print(get_states())
-print(get_counties("CA"))
-print(get_weather("CA","Alameda County"))
-print(get_residential("CA","San Mateo County"),HOUSE)
-print(get_commercial("CA","San Mateo County",LARGEOFFICE))
+if __name__ == "__main__":
+	print(get_states())
+	print(get_counties("CA"))
+	print(get_weather("CA","Alameda County"))
+	print(get_residential("CA","San Mateo County"),HOUSE)
+	print(get_commercial("CA","San Mateo County",LARGEOFFICE))
 
