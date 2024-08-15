@@ -25,186 +25,138 @@ def __(
     mo,
     overview_items,
     renewable_items,
+    scenario_items,
     storage_items,
     tariff_items,
+    weather_items,
 ):
     #
     # Scenario Inputs
     #
-    mo.accordion(
-        items={
-            "**Overview**": overview_items,
-            "**Location**": location_items,
-            "**Demand**": charger_items,
-            "**Supply**": tariff_items,
-            "**Feeders**": feeder_items,
-            "**Renewables**": renewable_items,
-            "**Storage**": storage_items,
-            "**Loads**": loadshape_items,
+    mo.ui.tabs({
+        "Files" : scenario_items,
+        "Scenario" : mo.accordion(
+            items={
+                "**Overview**": overview_items,
+                "**Location**": location_items,
+                "**Demand**": charger_items,
+                "**Supply**": tariff_items,
+                "**Feeders**": feeder_items,
+                "**Weather**" : weather_items,
+                "**Renewables**": renewable_items,
+                "**Storage**": storage_items,
+                "**Loads**": loadshape_items,
+            },
+            multiple=True,
+            lazy=True,
+            ),
         },
-        multiple=True,
-        lazy=True,
+      lazy=True,
     )
     return
 
 
 @app.cell
+def __(mo):
+    get_filename,set_filename = mo.state("")
+    get_scenario,set_scenario = mo.state({})
+    return get_filename, get_scenario, set_filename, set_scenario
+
+
+@app.cell
+def __(get_filename, mo, set_filename):
+    #
+    # Scenario files
+    #
+    get_filename()
+    scenario_file_ui = mo.ui.file_browser(
+        label="<b>Select file...</b>",
+        filetypes=[".ascript"],
+        multiple=False,
+        on_change=lambda x:set_filename(x[0].path if len(x)>0 else ""),
+    )
+    return scenario_file_ui,
+
+
+@app.cell
+def __(get_filename, get_scenario, json, mo, os, set_scenario):
+    scenario_load_ui = mo.ui.button(
+        label="Load",
+        disabled=not get_filename(),
+        on_click=lambda _:set_scenario(json.load(open(get_filename(),"r"))),
+    )
+    scenario_save_ui = mo.ui.button(
+        label="Save",
+        disabled=not get_filename(),
+        on_click=lambda _:json.dump(get_scenario(),open(get_filename(),"w")),
+    )
+    scenario_delete_ui = mo.ui.button(
+        label="Delete",
+        disabled=not get_filename(),
+        on_click=lambda _:os.remove(get_filename())
+    )
+    return scenario_delete_ui, scenario_load_ui, scenario_save_ui
+
+
+@app.cell
+def __(get_filename, mo, os, set_filename):
+    def _set_filename(x):
+        return set_filename(os.path.join(os.getcwd(),x+".ascript") if x else "")
+    scenario_name_ui = mo.ui.text(
+        label="Name",
+        value=os.path.splitext(os.path.basename(get_filename()))[0] if get_filename() else "",
+        on_change=_set_filename,
+    )
+    return scenario_name_ui,
+
+
+@app.cell
 def __(
-    base,
-    city_ui,
-    commercial_efficiency_ui,
-    commercial_electrification_gas_ui,
-    county_ui,
-    dt,
-    ev_adoption_rates,
-    ev_adoption_ui,
-    export_capacity_ui,
-    import_capacity_ui,
-    load,
-    load_fraction_ui,
     mo,
-    number_chargers_ui,
-    number_evs_ui,
-    public_fraction_ui,
-    public_rate_ui,
-    public_tariff_ui,
-    residential_efficiency_ui,
-    residential_electrification_gas_ui,
-    residential_electrification_oil_ui,
-    residential_electrification_propane_ui,
-    residential_fraction_ui,
-    residential_load_growth_ui,
-    residential_rate_ui,
-    residential_tariff_ui,
-    state_ui,
-    substation_ui,
-    workplace_fraction_ui,
-    workplace_rate_ui,
-    workplace_tariff_ui,
-    year_ui,
+    scenario_delete_ui,
+    scenario_file_ui,
+    scenario_load_ui,
+    scenario_name_ui,
+    scenario_save_ui,
 ):
-    substations = substation_ui.value.ZIP.to_dict()
-    substation_names = ", ".join(substations.keys()) if substations else None
-    _import_margin = 100-load["electric[kW]"].max()*load_fraction_ui.value/100/1000/import_capacity_ui.value*100
-    overview_items = mo.md(f"""<table>
-    <caption>Current scenario data<hr/><hr/></caption>
+    scenario_items = mo.vstack([
+        scenario_file_ui,
+        mo.hstack([scenario_load_ui,scenario_save_ui,scenario_name_ui,scenario_delete_ui],justify='start'),
+    ])
+    return scenario_items,
 
-    <tr><th rowspan=2>Location</th>
-        <th>City, County, State</th>
-        <td>{city_ui.value.title()}, {county_ui.value.title()} County, {state_ui.value}</td>
-        <td></td>
-    </tr>
-    <tr><th>Substations</th>
-        <td>{"<br/>".join([x[0]+" ("+x[1]+")" for x in substations.items()]) if substation_names else '<font color="red"><b>NONE</b></font>'}</td>
-        <td>{'<font color="red">&leftarrow; Select one or more substations</font>' if not substation_names else ''}</td>
-    </tr>
-    <tr><td colspan=4><hr/></td></tr>
 
-    <tr><th rowspan=4>Demand</th>
-        <th>Study year</th>
-        <td>{year_ui.value}</td>
-        <td></td>
-    </tr>
-    <tr><th>EV adoption rate</th>
-        <td>{ {y:x for x,y in ev_adoption_rates.items()}[ev_adoption_ui.value]}</td>
-        <td></td>
-    </tr>
-    <tr><th>Number of EVs</th>
-        <td>{number_evs_ui.value:,.0f}</td>
-        <td></td>
-    </tr>
-    <tr><th>Number of chargers</th>
-        <td>{number_chargers_ui.value:,.0f}</td>
-        <td></td>
-    </tr>
-    <tr><td colspan=4><hr/></td></tr>
-
-    <tr><th rowspan=3>Supply</th>
-        <th>Public</th>
-        <td>{public_fraction_ui.value}% on {public_tariff_ui.value.lower()} tariff<br/>{public_rate_ui.value}</td>
-        <td></td>
-    </tr>
-    <tr><th>Workplace</th>
-        <td>{workplace_fraction_ui.value}% on {workplace_tariff_ui.value.lower()} tariff<br/>{workplace_rate_ui.value}</td>
-        <td></td>
-    </tr>
-    <tr><th>Residential</th>
-        <td>{residential_fraction_ui.value}% on {residential_tariff_ui.value.lower()} tariff<br/>{residential_rate_ui.value}</td>
-        <td></td>
-    </tr>
-    <tr><td colspan=4><hr/></td></tr>
-
-    <tr><th rowspan=2>Feeders</th>
-        <th>Feeder import capacity</th>
-        <td>{import_capacity_ui.value} MW
-            ({_import_margin:.0f}% left)
-        </td>
-        <td>{"<font color=red><b>&leftarrow; Insufficient capacity<br/>Increase import limit or<br/>decrease load fraction.</b></font>" if _import_margin<=0 else ""}</td>
-    </tr>
-    <tr><th>Feeder export capacity</th>
-        <td>{export_capacity_ui.value} MW</td>
-        <td></td>
-    </tr>
-    <tr><td colspan=4><hr/></td></tr>
-        
-    <tr><th rowspan=2>Renewables</th>
-        <th>TODO</th>
-        <td></td>
-    </tr>
-    <tr><th>TODO</th>
-        <td></td>
-        <td></td>
-    </tr>
-    <tr><td colspan=4><hr/></td></tr>
-        
-    <tr><th rowspan=2>Storage</th>
-        <th>TODO</th>
-        <td></td>
-    </tr>
-    <tr><th>TODO</th>
-        <td></td>
-        <td></td>
-    </tr>
-    <tr><td colspan=4><hr/></td></tr>
-
-    <tr><th rowspan=6>Loads</th>
-        <th>Load growth</th>
-        <td>{pow((1+residential_load_growth_ui.value/100),int(year_ui.value)-dt.datetime.now().year)*100:.0f}%</td>
-        <td></td>
-    </tr>
-
-    <tr><th>Electrification impact</th>
-        <td>Residential natural gas: {residential_electrification_gas_ui.value/residential_efficiency_ui.value*100:.0f}%<br/>
-            Residential fuel oil: {residential_electrification_oil_ui.value/residential_efficiency_ui.value*100:.0f}%<br/>
-            Residential propane: {residential_electrification_propane_ui.value/residential_efficiency_ui.value*100:.0f}%<br/>
-            Commercial natural gas: {commercial_electrification_gas_ui.value/commercial_efficiency_ui.value*100:.0f}%<br/>
-        </td>
-        <td></td>
-    </tr>
-
-    <tr><th>Median load</th>
-        <td>{load["electric[kW]"].median()/1000:.1f} MW ({load["electric[kW]"].median()/base["electric[kW]"].median()*100-100:+.0f}%)</td>
-        <td></td>
-    </tr>
-
-    <tr><th>Average load</th>
-        <td>{load["electric[kW]"].mean()/1000:.1f} MW ({load["electric[kW]"].mean()/base["electric[kW]"].mean()*100-100:+.0f}%)</td>
-        <td></td>
-    </tr>
-
-    <tr><th>Peak load</th>
-        <td>{load["electric[kW]"].max()/1000:.1f} MW ({load["electric[kW]"].max()/base["electric[kW]"].max()*100-100:+.0f}%)</td>
-        <td></td>
-    </tr>
-
-    <tr><th>Light load</th>
-        <td>{load["electric[kW]"].min()/1000:.1f} MW ({load["electric[kW]"].min()/base["electric[kW]"].min()*100-100:+.0f}%)</td>
-        <td></td>
-    </tr>
-    <tr><td colspan=4><hr/></td></tr>
-
-    </table>""")
-    return overview_items, substation_names, substations
+@app.cell
+def __(
+    demand_overview,
+    feeder_overview,
+    get_filename,
+    load_overview,
+    location_overview,
+    mo,
+    os,
+    renewables_overview,
+    storage_overview,
+    supply_overview,
+    weather_overview,
+):
+    #
+    # Overview
+    #
+    overview_items = mo.md(f"""
+    <table>
+        <caption>{os.path.splitext(os.path.basename(get_filename()))[0]} scenario<hr/><hr/></caption>
+        {location_overview}
+        {demand_overview}
+        {supply_overview}
+        {feeder_overview}
+        {weather_overview}
+        {renewables_overview} 
+        {storage_overview}
+        {load_overview}
+    </table>
+    """)
+    return overview_items,
 
 
 @app.cell
@@ -219,6 +171,14 @@ def __(pd):
     ).sort_index()
     defaults = dict(STATE="CA",COUNTY="ORANGE",CITY="SANTA ANA",SUBSTATION=["CAMDEN"],UTILITY="Southern California Edison Co")
     return defaults, substation_data
+
+
+@app.cell
+def __(substation_ui):
+    substations = substation_ui.value.ZIP.to_dict()
+    substation_names = ", ".join(substations.keys()) if substations else None
+
+    return substation_names, substations
 
 
 @app.cell
@@ -358,6 +318,57 @@ def __(
 
 
 @app.cell
+def __(city_ui, county_ui, state_ui, substation_names, substations):
+    location_overview=f"""
+    <tr><th rowspan=2>Location</th>
+        <th>City, County, State</th>
+        <td>{city_ui.value.title()}, {county_ui.value.title()} County, {state_ui.value}</td>
+        <td></td>
+    </tr>
+    <tr><th>Substations</th>
+        <td>{"<br/>".join([x[0]+" ("+x[1]+")" for x in substations.items()]) if substation_names else '<font color="red"><b>NONE</b></font>'}</td>
+        <td>{'<font color="red">&leftarrow; Select one or more substations</font>' if not substation_names else ''}</td>
+    </tr>
+    <tr><td colspan=4><hr/></td></tr>
+    """
+    return location_overview,
+
+
+@app.cell
+def __(
+    ev_adoption_rates,
+    ev_adoption_ui,
+    number_chargers_ui,
+    number_evs_ui,
+    year_ui,
+):
+    #
+    # Demand
+    #
+    demand_overview=f"""
+    <tr><th rowspan=4>Demand</th>
+        <th>Study year</th>
+        <td>{year_ui.value}</td>
+        <td></td>
+    </tr>
+    <tr><th>EV adoption rate</th>
+        <td>{ {y:x for x,y in ev_adoption_rates.items()}[ev_adoption_ui.value]}</td>
+        <td></td>
+    </tr>
+    <tr><th>Number of EVs</th>
+        <td>{number_evs_ui.value:,.0f}</td>
+        <td></td>
+    </tr>
+    <tr><th>Number of chargers</th>
+        <td>{number_chargers_ui.value:,.0f}</td>
+        <td></td>
+    </tr>
+    <tr><td colspan=4><hr/></td></tr>
+    """
+    return demand_overview,
+
+
+@app.cell
 def __(mo):
     #
     # EV adoption rate
@@ -406,13 +417,47 @@ def __(dt, ev_adoption_ui, mo):
 
 
 @app.cell
-def __(ev_adoption_ui, mo, number_chargers_ui, number_evs_ui, year_ui):
+def __(
+    ev_adoption_ui,
+    mo,
+    number_chargers_ui,
+    number_evs_ui,
+    public_fraction_ui,
+    public_rate_ui,
+    public_tariff_ui,
+    residential_fraction_ui,
+    residential_rate_ui,
+    residential_tariff_ui,
+    workplace_fraction_ui,
+    workplace_rate_ui,
+    workplace_tariff_ui,
+    year_ui,
+):
+    #
+    # Supply
+    #
+    supply_overview=f"""
+    <tr><th rowspan=3>Supply</th>
+        <th>Public</th>
+        <td>{public_fraction_ui.value}% on {public_tariff_ui.value.lower()} tariff<br/>{public_rate_ui.value}</td>
+        <td></td>
+    </tr>
+    <tr><th>Workplace</th>
+        <td>{workplace_fraction_ui.value}% on {workplace_tariff_ui.value.lower()} tariff<br/>{workplace_rate_ui.value}</td>
+        <td></td>
+    </tr>
+    <tr><th>Residential</th>
+        <td>{residential_fraction_ui.value}% on {residential_tariff_ui.value.lower()} tariff<br/>{residential_rate_ui.value}</td>
+        <td></td>
+    </tr>
+    <tr><td colspan=4><hr/></td></tr>
+    """
     charger_items = mo.vstack([
         mo.md("""Specify the study year, EV adoption rate, number of EV, and chargers."""),
         # mo.hstack([full_adoption_year_ui,peak_adoption_year_ui,adoption_rate_ui],justify='space-between'),
         mo.hstack([year_ui,ev_adoption_ui,number_evs_ui,number_chargers_ui],justify='space-between'),
     ])
-    return charger_items,
+    return charger_items, supply_overview
 
 
 @app.cell
@@ -633,15 +678,33 @@ def __(
 
 
 @app.cell
-def __():
+def __(export_capacity_ui, import_capacity_ui, load, load_fraction_ui):
     #
     # Feeder
     #
-    return
+    _import_margin = 100-load["electric[kW]"].max()*load_fraction_ui.value/100/1000/import_capacity_ui.value*100
+    feeder_overview=f"""
+    <tr><th rowspan=2>Feeders</th>
+        <th>Feeder import capacity</th>
+        <td>{import_capacity_ui.value} MW
+            ({_import_margin:.0f}% left)
+        </td>
+        <td>{"<font color=red><b>&leftarrow; Insufficient capacity<br/>Increase import limit or<br/>decrease load fraction.</b></font>" if _import_margin<=0 else ""}</td>
+    </tr>
+    <tr><th>Feeder export capacity</th>
+        <td>{export_capacity_ui.value} MW</td>
+        <td></td>
+    </tr>
+    <tr><td colspan=4><hr/></td></tr>
+    """
+    return feeder_overview,
 
 
 @app.cell
 def __(math, mo, substation_ui):
+    #
+    # Import/export capacities
+    #
     _value=max(10,sum([x*y*(int(x/100)+1) for x,y in substation_ui.value[['MAX_VOLT','LINES']].values]))
     _max=10**int(math.log10(_value)+1)
     import_capacity_ui = mo.ui.slider(
@@ -665,6 +728,9 @@ def __(math, mo, substation_ui):
 
 @app.cell
 def __(import_capacity_ui, load, mo):
+    #
+    # Peak load fraction
+    #
     load_fraction_ui = mo.ui.slider(
         label=f"""Fraction of peak load served (% of {load["electric[kW]"].max()/1000:.1f} MW)""",
         start=0,
@@ -678,12 +744,68 @@ def __(import_capacity_ui, load, mo):
 
 @app.cell
 def __(export_capacity_ui, import_capacity_ui, load_fraction_ui, mo):
-
+    #
+    # Feeder UI items
+    #
     feeder_items = mo.vstack([
         mo.md("""Set constraints on the network assets to include in the hotspot analysis."""),
         mo.hstack([import_capacity_ui,export_capacity_ui,load_fraction_ui]),
     ])
     return feeder_items,
+
+
+@app.cell
+def __(
+    base,
+    commercial_efficiency_ui,
+    commercial_electrification_gas_ui,
+    dt,
+    load,
+    residential_efficiency_ui,
+    residential_electrification_gas_ui,
+    residential_electrification_oil_ui,
+    residential_electrification_propane_ui,
+    residential_load_growth_ui,
+    year_ui,
+):
+    load_overview=f"""
+    <tr><th rowspan=6>Loads</th>
+        <th>Load growth</th>
+        <td>{pow((1+residential_load_growth_ui.value/100),int(year_ui.value)-dt.datetime.now().year)*100:.0f}%</td>
+        <td></td>
+    </tr>
+
+    <tr><th>Electrification impact</th>
+        <td>Residential natural gas: {residential_electrification_gas_ui.value/residential_efficiency_ui.value*100:.0f}%<br/>
+            Residential fuel oil: {residential_electrification_oil_ui.value/residential_efficiency_ui.value*100:.0f}%<br/>
+            Residential propane: {residential_electrification_propane_ui.value/residential_efficiency_ui.value*100:.0f}%<br/>
+            Commercial natural gas: {commercial_electrification_gas_ui.value/commercial_efficiency_ui.value*100:.0f}%<br/>
+        </td>
+        <td></td>
+    </tr>
+
+    <tr><th>Median load</th>
+        <td>{load["electric[kW]"].median()/1000:.1f} MW ({load["electric[kW]"].median()/base["electric[kW]"].median()*100-100:+.0f}%)</td>
+        <td></td>
+    </tr>
+
+    <tr><th>Average load</th>
+        <td>{load["electric[kW]"].mean()/1000:.1f} MW ({load["electric[kW]"].mean()/base["electric[kW]"].mean()*100-100:+.0f}%)</td>
+        <td></td>
+    </tr>
+
+    <tr><th>Peak load</th>
+        <td>{load["electric[kW]"].max()/1000:.1f} MW ({load["electric[kW]"].max()/base["electric[kW]"].max()*100-100:+.0f}%)</td>
+        <td></td>
+    </tr>
+
+    <tr><th>Light load</th>
+        <td>{load["electric[kW]"].min()/1000:.1f} MW ({load["electric[kW]"].min()/base["electric[kW]"].min()*100-100:+.0f}%)</td>
+        <td></td>
+    </tr>
+    <tr><td colspan=4><hr/></td></tr>
+    """
+    return load_overview,
 
 
 @app.cell
@@ -799,7 +921,7 @@ def __(
         mo.hstack([residential_electrification_oil_ui]),
         mo.hstack([residential_electrification_propane_ui]),
         mo.hstack([residential_efficiency_ui,commercial_efficiency_ui]),
-        (load["electric[kW]"]/1000).plot(grid=True,linewidth=0.5,figsize=(15,5),xlabel='Load (MW)')
+        (load["electric[kW]"]/1000).plot(grid=True,linewidth=0.5,figsize=(15,5),ylabel='Load (MW)',xlabel="Date/Time")
     ])    
     return loadshape_items,
 
@@ -852,29 +974,238 @@ def __(mo):
     #
     # Renewables
     #
-    renewable_items = mo.md("TODO")
-    return renewable_items,
+    distributed_renewables_ui=mo.ui.switch(label="Distributed renewables only")
+    get_solar_capacity,set_solar_capacity = mo.state(0)
+    get_wind_capacity,set_wind_capacity = mo.state(0)
+    return (
+        distributed_renewables_ui,
+        get_solar_capacity,
+        get_wind_capacity,
+        set_solar_capacity,
+        set_wind_capacity,
+    )
+
+
+@app.cell
+def __(distributed_renewables_ui, solar_capacity_ui, wind_capacity_ui):
+    #
+    # Renewables overview
+    #
+    renewables_overview=f"""  
+    <tr><th rowspan=3>Renewables</th>
+        <th>Solar capacity</th>
+        <td>{solar_capacity_ui.value:,.0f} MW</td>
+        <td></td>
+    </tr>
+    <tr><th>Wind capacity</th>
+        <td>{wind_capacity_ui.value:,.0f} MW</td>
+        <td></td>
+    </tr>
+    <tr><th>Distributed resources</th>
+        <td>{distributed_renewables_ui.value}</td>
+        <td></td>
+    </tr>
+    <tr><td colspan=4><hr/></td></tr>
+    """
+    return renewables_overview,
+
+
+@app.cell
+def __(
+    distributed_renewables_ui,
+    get_solar_capacity,
+    get_wind_capacity,
+    load,
+    math,
+    mo,
+    set_solar_capacity,
+    set_wind_capacity,
+    substation_ui,
+):
+    #
+    # Renewable generation
+    #
+    _value=max(10,sum([x*y*(int(x/100)+1) for x,y in substation_ui.value[['MAX_VOLT','LINES']].values])) if distributed_renewables_ui.value else load["electric[kW]"].max()/1000
+    _max=10**int(math.log10(_value)+1) 
+    solar_capacity_ui = mo.ui.slider(
+        label="Installed solar capacity (MW):",
+        start=0,
+        stop=_max,
+        step=_max/100,
+        value=min(_max,get_solar_capacity()),
+        on_change=set_solar_capacity,
+        debounce=True,
+        show_value=True,
+    )
+    wind_capacity_ui = mo.ui.slider(
+        label="Installed wind capacity (MW):",
+        start=0,
+        stop=_max,
+        step=_max/100,
+        value=min(_max,get_wind_capacity()),
+        on_change=set_wind_capacity,
+        debounce=True,
+        show_value=True,
+    )
+    renewable_items = mo.hstack([distributed_renewables_ui,solar_capacity_ui,wind_capacity_ui])
+    return renewable_items, solar_capacity_ui, wind_capacity_ui
+
+
+@app.cell
+def __(distributed_storage_ui, mo, storage_energy_ui, storage_power_ui):
+    #
+    # Storage
+    #
+    storage_items = mo.hstack([distributed_storage_ui,storage_power_ui,storage_energy_ui])
+    if storage_power_ui.value > 0:
+        _days,_hours = divmod(storage_energy_ui.value/storage_power_ui.value,24)
+        _hours,_minutes = divmod(_hours*60,60)
+        _days = f"{_days:.0f} days" if _days>0 else ""
+        _hours = f"{_hours:.0f} hours" if _hours>0 else ""
+        _minutes = f"{_minutes:.0f} minutes" if _minutes>0 else ""
+    else:
+        _days,_hours,_minutes = "","","N/A"
+    storage_overview=f"""
+    <tr><th rowspan=4>Storage</th>
+        <th>Power capacity</th>
+        <td>{storage_power_ui.value:,.0f} MW</td>
+        <td></td>
+    </tr>
+    <tr><th>Energy capacity</th>
+        <td>{storage_energy_ui.value:,.0f} MWh</td>
+        <td></td>
+    </tr>
+    <tr><th>Distributed resources</th>
+        <td>{distributed_storage_ui.value}</td>
+        <td></td>
+    </tr>
+    <tr><th>Maximum duration</th>
+        <td>{_days} {_hours} {_minutes}</td>
+        <td></td>
+    </tr>
+    <tr><td colspan=4><hr/></td></tr>
+    """
+    return storage_items, storage_overview
 
 
 @app.cell
 def __(mo):
-    #
-    # Storage
-    #
-    storage_items = mo.md("TODO")
-    return storage_items,
+    distributed_storage_ui = mo.ui.switch(label="Distributed storage only")
+    get_storage_power,set_storage_power = mo.state(0)
+    get_storage_energy,set_storage_energy = mo.state(0)
+    return (
+        distributed_storage_ui,
+        get_storage_energy,
+        get_storage_power,
+        set_storage_energy,
+        set_storage_power,
+    )
+
+
+@app.cell
+def __(
+    distributed_storage_ui,
+    get_storage_energy,
+    get_storage_power,
+    load,
+    math,
+    mo,
+    set_storage_energy,
+    set_storage_power,
+    substation_ui,
+):
+    _value=max(10,sum([x*y*(int(x/100)+1) for x,y in substation_ui.value[['MAX_VOLT','LINES']].values])) if distributed_storage_ui.value else load["electric[kW]"].max()/1000
+    _max=10**int(math.log10(_value)+1) 
+    storage_power_ui=mo.ui.slider(
+        label="Storage power capacity (MW)",
+        start=0,
+        stop=_max,
+        step=_max/100,
+        debounce=True,
+        show_value=True,
+        value=min(_max,get_storage_power()),
+        on_change=set_storage_power,
+    )
+    storage_energy_ui=mo.ui.slider(
+        label="Storage energy capacity (MWh)",
+        start=0,
+        stop=_max,
+        step=_max/100,
+        debounce=True,
+        show_value=True,
+        value=min(_max,get_storage_energy()),
+        on_change=set_storage_energy,
+    )
+    return storage_energy_ui, storage_power_ui
+
+
+@app.cell
+def __(county_ui, loads, mo, plt, state_ui):
+    weather_data = loads.get_weather(
+        state_ui.value, county_ui.value.title() + " County"
+    )
+    plt.figure()
+    _temp = (weather_data["drybulb[degC]"] * 1.8 + 32).plot(
+        grid=True,
+        linewidth=0.5,
+        figsize=(15, 5),
+        ylabel="Temperature ($^o$F)",
+        xlabel="Date/Time",
+    )
+    plt.figure()
+    _solar = (weather_data["ghr[W/m^2]"]).plot(
+        grid=True,
+        linewidth=0.5,
+        figsize=(15, 5),
+        ylabel="Solar (W/m$^2$)",
+        xlabel="Date/Time",
+    )
+    plt.figure()
+    _wind = (weather_data["windvel[m/s]"]).plot(
+        grid=True,
+        linewidth=0.5,
+        figsize=(15, 5),
+        ylabel="Wind (m/s)",
+        xlabel="Date/Time",
+    )
+    weather_items = mo.ui.tabs(
+        {
+            "Temperature": _temp,
+            "Solar": _solar,
+            "Wind": _wind,
+        },
+        lazy=True,
+    )
+    weather_overview = mo.md(f"""
+    <tr><th rowspan=3>Weather</th>
+        <th>Peak temperature</th>
+        <td>{(weather_data["drybulb[degC]"]*1.8+32).max()} &deg;F</td>
+        <td></td>
+    </tr>
+    <tr><th>Peak solar</th>
+        <td>{(weather_data["ghr[W/m^2]"]).max()} W/m&sup2;</td>
+        <td></td>
+    </tr>
+    <tr><th>Peak wind</th>
+        <td>{(weather_data["windvel[m/s]"]).max()} m/s</td>
+        <td></td>
+    </tr>
+    """)
+    return weather_data, weather_items, weather_overview
 
 
 @app.cell
 def __():
     import marimo as mo
+    import os, sys
     import datetime as dt
     import pandas as pd
     import json
     import config
     import loads
     import math
-    return config, dt, json, loads, math, mo, pd
+    import matplotlib.pyplot as plt
+    return config, dt, json, loads, math, mo, os, pd, plt, sys
 
 
 if __name__ == "__main__":
