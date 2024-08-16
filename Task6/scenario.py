@@ -64,7 +64,7 @@ def __(
             multiple=True,
             lazy=True,
             ),
-        "Results" : mo.md("Coming soon!"),
+        "Results" : overview_items,
         },
       lazy=True,
     )
@@ -429,12 +429,17 @@ def __(dt, ev_adoption_ui, mo):
         debounce=True,
         show_value=True,
     )
-    return number_chargers_ui, number_evs_ui, year_ui
+    ev_timer_ui = mo.ui.switch(label="Enable residential EV charger timers")
+    return ev_timer_ui, number_chargers_ui, number_evs_ui, year_ui
 
 
 @app.cell
 def __(
     ev_adoption_ui,
+    ev_config,
+    ev_loadshape,
+    ev_model,
+    ev_timer_ui,
     mo,
     number_chargers_ui,
     number_evs_ui,
@@ -444,6 +449,7 @@ def __(
     residential_fraction_ui,
     residential_rate_ui,
     residential_tariff_ui,
+    speech,
     workplace_fraction_ui,
     workplace_rate_ui,
     workplace_tariff_ui,
@@ -452,7 +458,7 @@ def __(
     #
     # Supply
     #
-    supply_overview=f"""
+    supply_overview = f"""
     <tr><th rowspan=3>Supply</th>
         <th>Public</th>
         <td>{public_fraction_ui.value}% on {public_tariff_ui.value.lower()} tariff<br/>{public_rate_ui.value}</td>
@@ -468,12 +474,32 @@ def __(
     </tr>
     <tr><td colspan=4><hr/></td></tr>
     """
-    charger_items = mo.vstack([
-        mo.md("""Specify the study year, EV adoption rate, number of EV, and chargers."""),
-        # mo.hstack([full_adoption_year_ui,peak_adoption_year_ui,adoption_rate_ui],justify='space-between'),
-        mo.hstack([year_ui,ev_adoption_ui,number_evs_ui,number_chargers_ui],justify='space-between'),
-    ])
-    return charger_items, supply_overview
+    ev_plots = speech.Plotting(ev_model, ev_config)
+    charger_items = mo.vstack(
+        [
+            mo.md(
+                """Specify the study year, EV adoption rate, number of EV, and chargers."""
+            ),
+            # mo.hstack([full_adoption_year_ui,peak_adoption_year_ui,adoption_rate_ui],justify='space-between'),
+            mo.hstack([year_ui, ev_adoption_ui,number_evs_ui], justify="start"),
+            mo.hstack([number_chargers_ui,ev_timer_ui], justify="start"),
+            mo.hstack(
+                [
+                    ev_loadshape[x].plot(
+                        title=x.title(),
+                        xlabel="Hour of day",
+                        ylabel="EV charger load (MW)",
+                        grid=True,
+                        legend=True,
+                        xticks=ev_loadshape[x].index[3::6],
+                    )
+                    for x in ["weekday", "weekend"]
+                ],
+                justify="space-between",
+            ),
+        ]
+    )
+    return charger_items, ev_plots, supply_overview
 
 
 @app.cell
@@ -992,6 +1018,7 @@ def __(
     commercial_load_growth_ui,
     county_ui,
     dt,
+    ev_load,
     loads,
     residential_efficiency_ui,
     residential_electrification_gas_ui,
@@ -1025,6 +1052,10 @@ def __(
             },
         }
     )
+    _evloads = ev_load.sum(axis=1).values*1000
+    load["electric[kW]"] += _evloads
+    load["total[kW]"] += _evloads
+
     return base, load
 
 
@@ -1149,6 +1180,9 @@ def __(distributed_storage_ui, mo, storage_energy_ui, storage_power_ui):
 
 @app.cell
 def __(mo):
+    #
+    # Storage states
+    #
     distributed_storage_ui = mo.ui.switch(label="Distributed storage only")
     get_storage_power,set_storage_power = mo.state(0)
     get_storage_energy,set_storage_energy = mo.state(0)
@@ -1173,6 +1207,9 @@ def __(
     set_storage_power,
     substation_ui,
 ):
+    #
+    # Storage UI
+    #
     _value=max(10,sum([x*y*(int(x/100)+1) for x,y in substation_ui.value[['MAX_VOLT','LINES']].values])) if distributed_storage_ui.value else load["electric[kW]"].max()/1000
     _max=10**int(math.log10(_value)+1) 
     storage_power_ui=mo.ui.slider(
@@ -1200,6 +1237,9 @@ def __(
 
 @app.cell
 def __(county_ui, loads, mo, plt, sb, state_ui):
+    #
+    # Weather data
+    #
     weather_data = loads.get_weather(
         state_ui.value, county_ui.value.title() + " County"
     )
@@ -1253,6 +1293,49 @@ def __(county_ui, loads, mo, plt, sb, state_ui):
     </tr>
     """)
     return weather_data, weather_items, weather_overview
+
+
+@app.cell
+def __(speech):
+    #
+    # SPEECh model
+    #
+    ev_data = speech.DataSetConfigurations('Original16',ng=16)
+    ev_model = speech.SPEECh(ev_data)
+    return ev_data, ev_model
+
+
+@app.cell
+def __(ev_model, ev_timer_ui, json, number_evs_ui, pd, speech):
+    #
+    # SPEECh config
+    ev_config = speech.SPEEChGeneralConfiguration(ev_model, remove_timers=not ev_timer_ui.value)
+    ev_config.num_evs(number_evs_ui.value)
+    ev_config.groups()
+    # ev_config.change_pg(new_weights={0: 0.5, 4: 0.5}, dend=True)
+    ev_config.run_all(weekday="weekday")
+    ev_loadshape = {}
+    _dt = {"weekend":pd.date_range("2017-12-31 00:00:00+08:00","2018-01-01 00:00:00+08:00",periods=1440),
+           "weekday":pd.date_range("2018-01-01 00:00:00+08:00","2018-01-02 00:00:00+08:00",periods=1440),
+           }
+
+    # Note: mapping won't be necessary if we redesign the GMM
+    _kw = json.load(open("ev_chargers.json","r")) # charger type kW loads
+    _mt = json.load(open("ev_sectors.json","r")) # charging segment map to customer sectors
+    for daytype in _dt:
+        ev_config.run_all(weekday=daytype)
+        _ls = pd.DataFrame(ev_config.total_load_dict,index=_dt[daytype])
+        for _col in _ls.columns:
+            _ct = _col.split()[-1]
+            _ls[_col] *= _kw[_ct]
+        for _cs in _mt.values():
+            _ls[_cs] = 0.0
+        for _col in _mt:
+            _ls[_mt[_col]] += _ls[_col]        
+            _ls.drop(_col,axis=1,inplace=True)
+        ev_loadshape[daytype] = _ls.resample("1H").mean()[:-1]
+    ev_load = pd.concat(([pd.concat([ev_loadshape['weekday']]*5 + [ev_loadshape['weekend']]*2)]*52)+[ev_loadshape['weekend']])
+    return daytype, ev_config, ev_load, ev_loadshape
 
 
 @app.cell
