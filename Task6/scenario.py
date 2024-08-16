@@ -8,12 +8,24 @@ app = marimo.App(width="full", app_title="")
 def __(mo):
     mo.md(
         """
-        # Scenario
+        # ASCRIPT -- Advanced Smart-Charging Infrastructure Planning Tool
 
-        Start your scenario by defining the Charging Segments for your selected location, EV/charger populations, rates, feeders, and loads.
+        Version 2.0
         """
     )
     return
+
+
+@app.cell
+def __(mo):
+    welcome_items = mo.md("""
+    Welcome to ASCRIPT, the Advanced Smart-Charging Infrastructure Planning Tool.
+
+    ASCRIPT identifies substations that may reach import/export capacity limits in coming years by using load, renewable, energy storage, and electric vehicle adoption forecasts. You can study scenarios where these resources give rise to conditions where too much load or too much generation is encountered at certain times of year, days of the week, or hours of the day.
+
+    Each scenario requires you to specify which which county and substations you are studying, what demand for EV charging is present, where EV chargers are located, what the substations and feeder limits are, how the weather is affecting renewables, how much energy storage is available and how it is controlled, and how much customer load growth and electrification there is.
+    """)
+    return welcome_items,
 
 
 @app.cell
@@ -29,11 +41,13 @@ def __(
     storage_items,
     tariff_items,
     weather_items,
+    welcome_items,
 ):
     #
     # Scenario Inputs
     #
     mo.ui.tabs({
+        "Welcome" : welcome_items,
         "Files" : scenario_items,
         "Scenario" : mo.accordion(
             items={
@@ -50,6 +64,7 @@ def __(
             multiple=True,
             lazy=True,
             ),
+        "Results" : mo.md("Coming soon!"),
         },
       lazy=True,
     )
@@ -103,7 +118,7 @@ def __(get_filename, mo, os, set_filename):
     def _set_filename(x):
         return set_filename(os.path.join(os.getcwd(),x+".ascript") if x else "")
     scenario_name_ui = mo.ui.text(
-        label="Name",
+        label="Scenario name:",
         value=os.path.splitext(os.path.basename(get_filename()))[0] if get_filename() else "",
         on_change=_set_filename,
     )
@@ -182,15 +197,16 @@ def __(substation_ui):
 
 
 @app.cell
-def __(defaults, json, mo):
+def __(defaults, json, loads, mo):
     #
     # State selection
     #
     utilities_data = json.load(open("utilities.json","r"))
+    _values = loads.get_states()
     state_ui = mo.ui.dropdown(
         label="State:",
         options=list(utilities_data),
-        value=(defaults['STATE'] if 'STATE' in defaults else _values[0]),
+        value=(defaults['STATE'] if 'STATE' in defaults and defaults['STATE'] in _values else _values[0]),
         # on_change=set_state,
         allow_select_none=False,
     )
@@ -211,7 +227,7 @@ def __(defaults, mo, state_ui, substation_data):
     county_ui = mo.ui.dropdown(
         label="County:",
         options=_values,
-        value=(defaults['COUNTY'] if 'COUNTY' in defaults else _values[0]),
+        value=(defaults['COUNTY'] if 'COUNTY' in defaults and defaults['COUNTY'] in _values else _values[0]),
         allow_select_none=False,
     )
     return county_ui,
@@ -231,7 +247,7 @@ def __(county_ui, defaults, mo, state_ui, substation_data):
     city_ui = mo.ui.dropdown(
         label="City:",
         options=_values,
-        value=(defaults['CITY'] if 'CITY' in defaults else _values[0]),
+        value=(defaults['CITY'] if 'CITY' in defaults and defaults['CITY'] in _values else _values[0]),
     )
     return city_ui,
 
@@ -890,10 +906,12 @@ def __(loads, mo):
         debounce=True,
         show_value=True,
     )
+    net_load_ui = mo.ui.switch(label="Show net load")
     return (
         commercial_efficiency_ui,
         commercial_electrification_gas_ui,
         commercial_load_growth_ui,
+        net_load_ui,
         residential_efficiency_ui,
         residential_electrification_gas_ui,
         residential_electrification_oil_ui,
@@ -907,22 +925,63 @@ def __(
     commercial_efficiency_ui,
     commercial_electrification_gas_ui,
     commercial_load_growth_ui,
+    county_ui,
     load,
     mo,
+    net_load_ui,
+    plt,
     residential_efficiency_ui,
     residential_electrification_gas_ui,
     residential_electrification_oil_ui,
     residential_electrification_propane_ui,
     residential_load_growth_ui,
+    sb,
+    solar_capacity_ui,
+    state_ui,
+    weather_data,
+    wind_capacity_ui,
 ):
-    loadshape_items = mo.vstack([
-        mo.hstack([residential_load_growth_ui,commercial_load_growth_ui]),
-        mo.hstack([residential_electrification_gas_ui,commercial_electrification_gas_ui]),
-        mo.hstack([residential_electrification_oil_ui]),
-        mo.hstack([residential_electrification_propane_ui]),
-        mo.hstack([residential_efficiency_ui,commercial_efficiency_ui]),
-        (load["electric[kW]"]/1000).plot(grid=True,linewidth=0.5,figsize=(15,5),ylabel='Load (MW)',xlabel="Date/Time")
-    ])    
+    plt.figure(figsize=(15, 5))
+    if net_load_ui.value:
+        if solar_capacity_ui.value > 0:
+            _solar = weather_data["ghr[W/m^2]"]
+            _solar.index = load.index
+            _solar = _solar / _solar.max() * solar_capacity_ui.value
+        else:
+            _solar = 0.0
+        if wind_capacity_ui.value > 0:
+            _wind = weather_data["windvel[m/s]"]
+            _wind.index = load.index
+            _wind = _wind / _wind.max() * wind_capacity_ui.value
+        else:
+            _wind = 0.0
+        _load = load["electric[kW]"] / 1000 - _solar - _wind
+    else:
+        _load = load["electric[kW]"] / 1000
+    _load = sb.heatmap(
+        _load.to_numpy().reshape((365, 24)).transpose(),
+        cmap="jet",
+        cbar_kws={"label": "Load (MW)"},
+    )
+    _load.set_xlabel("Day")
+    _load.set_ylabel("Hour")
+    _load.set_title(f"{county_ui.value.title()} County, {state_ui.value}")
+    loadshape_items = mo.vstack(
+        [
+            mo.hstack([residential_load_growth_ui, commercial_load_growth_ui]),
+            mo.hstack(
+                [
+                    residential_electrification_gas_ui,
+                    commercial_electrification_gas_ui,
+                ]
+            ),
+            mo.hstack([residential_electrification_oil_ui]),
+            mo.hstack([residential_electrification_propane_ui]),
+            mo.hstack([residential_efficiency_ui, commercial_efficiency_ui]),
+            net_load_ui,
+            _load,
+        ]
+    )
     return loadshape_items,
 
 
@@ -1002,7 +1061,7 @@ def __(distributed_renewables_ui, solar_capacity_ui, wind_capacity_ui):
         <td></td>
     </tr>
     <tr><th>Distributed resources</th>
-        <td>{distributed_renewables_ui.value}</td>
+        <td>{'Included' if distributed_renewables_ui.value else 'None'}</td>
         <td></td>
     </tr>
     <tr><td colspan=4><hr/></td></tr>
@@ -1076,7 +1135,7 @@ def __(distributed_storage_ui, mo, storage_energy_ui, storage_power_ui):
         <td></td>
     </tr>
     <tr><th>Distributed resources</th>
-        <td>{distributed_storage_ui.value}</td>
+        <td>{'Included' if distributed_storage_ui.value else 'None'}</td>
         <td></td>
     </tr>
     <tr><th>Maximum duration</th>
@@ -1140,54 +1199,56 @@ def __(
 
 
 @app.cell
-def __(county_ui, loads, mo, plt, state_ui):
+def __(county_ui, loads, mo, plt, sb, state_ui):
     weather_data = loads.get_weather(
         state_ui.value, county_ui.value.title() + " County"
     )
-    plt.figure()
-    _temp = (weather_data["drybulb[degC]"] * 1.8 + 32).plot(
-        grid=True,
-        linewidth=0.5,
-        figsize=(15, 5),
-        ylabel="Temperature ($^o$F)",
-        xlabel="Date/Time",
-    )
-    plt.figure()
-    _solar = (weather_data["ghr[W/m^2]"]).plot(
-        grid=True,
-        linewidth=0.5,
-        figsize=(15, 5),
-        ylabel="Solar (W/m$^2$)",
-        xlabel="Date/Time",
-    )
-    plt.figure()
-    _wind = (weather_data["windvel[m/s]"]).plot(
-        grid=True,
-        linewidth=0.5,
-        figsize=(15, 5),
-        ylabel="Wind (m/s)",
-        xlabel="Date/Time",
-    )
+
+    plt.figure(figsize=(15,5))
+    _temp = sb.heatmap((weather_data["drybulb[degC]"] * 1.8 + 32).to_numpy().reshape((365,24)).transpose(),
+                       cmap="jet",cbar_kws={'label':'Temperature ($^\\mathrm{o}$F)'},
+                       # xticklabels=_index,
+                      )
+    _temp.set_xlabel("Day")
+    _temp.set_ylabel("Hour")
+    _temp.set_title(f"{county_ui.value.title()} County, {state_ui.value}")
+
+    plt.figure(figsize=(15,5))
+    _solar = sb.heatmap((weather_data["ghr[W/m^2]"]).to_numpy().reshape((365,24)).transpose(),
+                       cmap="jet",cbar_kws={'label':'Solar (W/m$^2$)'}
+                      )
+    _solar.set_xlabel("Day")
+    _solar.set_ylabel("Hour")
+    _solar.set_title(f"{county_ui.value.title()} County, {state_ui.value}")
+
+    plt.figure(figsize=(15,5))
+    _wind = sb.heatmap((weather_data["windvel[m/s]"]).to_numpy().reshape((365,24)).transpose(),
+                       cmap="jet",cbar_kws={'label':'Wind (m/s)'}
+                      )
+    _wind.set_xlabel("Day")
+    _wind.set_ylabel("Hour")
+    _wind.set_title(f"{county_ui.value.title()} County, {state_ui.value}")
+
     weather_items = mo.ui.tabs(
         {
             "Temperature": _temp,
             "Solar": _solar,
             "Wind": _wind,
         },
-        lazy=True,
+        # lazy=True,
     )
     weather_overview = mo.md(f"""
     <tr><th rowspan=3>Weather</th>
         <th>Peak temperature</th>
-        <td>{(weather_data["drybulb[degC]"]*1.8+32).max()} &deg;F</td>
+        <td>{(weather_data["drybulb[degC]"]*1.8+32).max():.1f} &deg;F</td>
         <td></td>
     </tr>
     <tr><th>Peak solar</th>
-        <td>{(weather_data["ghr[W/m^2]"]).max()} W/m&sup2;</td>
+        <td>{(weather_data["ghr[W/m^2]"]).max():.1f} W/m&sup2;</td>
         <td></td>
     </tr>
     <tr><th>Peak wind</th>
-        <td>{(weather_data["windvel[m/s]"]).max()} m/s</td>
+        <td>{(weather_data["windvel[m/s]"]).max():.1f} m/s</td>
         <td></td>
     </tr>
     """)
@@ -1205,7 +1266,8 @@ def __():
     import loads
     import math
     import matplotlib.pyplot as plt
-    return config, dt, json, loads, math, mo, os, pd, plt, sys
+    import seaborn as sb
+    return config, dt, json, loads, math, mo, os, pd, plt, sb, sys
 
 
 if __name__ == "__main__":
