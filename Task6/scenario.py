@@ -1267,7 +1267,8 @@ def __():
     import math
     import matplotlib.pyplot as plt
     import seaborn as sb
-    return config, dt, json, loads, math, mo, os, pd, plt, sb, sys
+    import speech
+    return config, dt, json, loads, math, mo, os, pd, plt, sb, speech, sys
 
 
 if __name__ == "__main__":
