@@ -5,12 +5,12 @@ app = marimo.App(width="full", app_title="")
 
 
 @app.cell
-def __(mo):
+def __(dt, git, mo):
     mo.md(
-        """
+        f"""
         # ASCRIPT -- Advanced Smart-Charging Infrastructure Planning Tool
 
-        Version 2.0
+        Version 0.0.0-{dt.datetime.now().strftime("%y%m%d")} ({git.Repo("..").active_branch})
         """
     )
     return
@@ -354,6 +354,7 @@ def __(city_ui, county_ui, state_ui, substation_names, substations):
 def __(
     ev_adoption_rates,
     ev_adoption_ui,
+    ev_timer_ui,
     number_chargers_ui,
     number_evs_ui,
     year_ui,
@@ -362,7 +363,7 @@ def __(
     # Demand
     #
     demand_overview=f"""
-    <tr><th rowspan=4>Demand</th>
+    <tr><th rowspan=5>Demand</th>
         <th>Study year</th>
         <td>{year_ui.value}</td>
         <td></td>
@@ -377,6 +378,10 @@ def __(
     </tr>
     <tr><th>Number of chargers</th>
         <td>{number_chargers_ui.value:,.0f}</td>
+        <td></td>
+    </tr>
+    <tr><th>Charge timers enabled</th>
+        <td>{"Yes" if ev_timer_ui.value else "No"}</td>
         <td></td>
     </tr>
     <tr><td colspan=4><hr/></td></tr>
@@ -1343,6 +1348,7 @@ def __():
     import marimo as mo
     import os, sys
     import datetime as dt
+    import git
     import pandas as pd
     import json
     import config
@@ -1351,7 +1357,21 @@ def __():
     import matplotlib.pyplot as plt
     import seaborn as sb
     import speech
-    return config, dt, json, loads, math, mo, os, pd, plt, sb, speech, sys
+    return (
+        config,
+        dt,
+        git,
+        json,
+        loads,
+        math,
+        mo,
+        os,
+        pd,
+        plt,
+        sb,
+        speech,
+        sys,
+    )
 
 
 if __name__ == "__main__":
