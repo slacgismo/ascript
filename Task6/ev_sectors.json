@@ -1,0 +1,7 @@
+{
+       "Residential L2" : "residential",
+       "MUD L2" : "residential",
+       "Workplace L2" : "commercial",
+       "Public L2" : "public",
+       "Public DCFC" : "public"
+}

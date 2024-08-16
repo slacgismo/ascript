@@ -1,0 +1,6 @@
+marimo
+plotly
+pandas
+leafmap
+seaborn
+matplotlib
