@@ -126,8 +126,19 @@ def __(get_filename, mo, os, set_filename):
 
 
 @app.cell
+def __(mo):
+    scenario_comments_ui = mo.ui.text_area(
+        label="Scenario description",
+        full_width=True,
+        placeholder="Describe this scenario",
+    )
+    return scenario_comments_ui,
+
+
+@app.cell
 def __(
     mo,
+    scenario_comments_ui,
     scenario_delete_ui,
     scenario_file_ui,
     scenario_load_ui,
@@ -136,6 +147,7 @@ def __(
 ):
     scenario_items = mo.vstack([
         scenario_file_ui,
+        scenario_comments_ui,
         mo.hstack([scenario_load_ui,scenario_save_ui,scenario_name_ui,scenario_delete_ui],justify='start'),
     ])
     return scenario_items,
@@ -192,7 +204,6 @@ def __(pd):
 def __(substation_ui):
     substations = substation_ui.value.ZIP.to_dict()
     substation_names = ", ".join(substations.keys()) if substations else None
-
     return substation_names, substations
 
 
@@ -632,19 +643,19 @@ def __(
         set_workplace_fraction(round(get_workplace_fraction()*(100-x)/total))
         set_residential_fraction(round(get_residential_fraction()*(100-x)/total))
         return set_public_fraction(x)
-        
+
     def _set_workplace_fraction(x):
         total = get_public_fraction() + get_residential_fraction()
         set_public_fraction(round(get_public_fraction()*(100-x)/total))
         set_residential_fraction(round(get_residential_fraction()*(100-x)/total))
         return set_workplace_fraction(x)
-        
+
     def _set_residential_fraction(x):
         total = get_workplace_fraction() + get_public_fraction()
         set_workplace_fraction(round(get_workplace_fraction()*(100-x)/total))
         set_public_fraction(round(get_public_fraction()*(100-x)/total))
         return set_residential_fraction(x)
-        
+
     public_fraction_ui = mo.ui.slider(
         start=0,
         stop=100,
@@ -720,7 +731,6 @@ def __(
     """),
         # mo.hstack([public_ui,workplace_ui,residential_ui]),
     ])
-
     return tariff_items,
 
 
@@ -1060,7 +1070,6 @@ def __(
     _evloads = ev_load.sum(axis=1).values*1000
     load["electric[kW]"] += _evloads
     load["total[kW]"] += _evloads
-
     return base, load
 
 
