@@ -72,85 +72,88 @@ def __(
 
 
 @app.cell
-def __(mo):
+def __(ascript, mo):
     get_filename,set_filename = mo.state("")
-    get_scenario,set_scenario = mo.state({})
-    return get_filename, get_scenario, set_filename, set_scenario
-
-
-@app.cell
-def __(get_filename, mo, set_filename):
-    #
-    # Scenario files
-    #
-    get_filename()
-    scenario_file_ui = mo.ui.file_browser(
-        label="<b>Select file...</b>",
-        filetypes=[".ascript"],
-        multiple=False,
-        on_change=lambda x:set_filename(x[0].path if len(x)>0 else ""),
+    get_scenario,set_scenario = mo.state(ascript.Scenario())
+    get_comment,set_comment = mo.state(get_scenario().comment)
+    return (
+        get_comment,
+        get_filename,
+        get_scenario,
+        set_comment,
+        set_filename,
+        set_scenario,
     )
-    return scenario_file_ui,
-
-
-@app.cell
-def __(get_filename, get_scenario, json, mo, os, set_scenario):
-    scenario_load_ui = mo.ui.button(
-        label="Load",
-        disabled=not get_filename(),
-        on_click=lambda _:set_scenario(json.load(open(get_filename(),"r"))),
-    )
-    scenario_save_ui = mo.ui.button(
-        label="Save",
-        disabled=not get_filename(),
-        on_click=lambda _:json.dump(get_scenario(),open(get_filename(),"w")),
-    )
-    scenario_delete_ui = mo.ui.button(
-        label="Delete",
-        disabled=not get_filename(),
-        on_click=lambda _:os.remove(get_filename())
-    )
-    return scenario_delete_ui, scenario_load_ui, scenario_save_ui
-
-
-@app.cell
-def __(get_filename, mo, os, set_filename):
-    def _set_filename(x):
-        return set_filename(os.path.join(os.getcwd(),x+".ascript") if x else "")
-    scenario_name_ui = mo.ui.text(
-        label="Scenario name:",
-        value=os.path.splitext(os.path.basename(get_filename()))[0] if get_filename() else "",
-        on_change=_set_filename,
-    )
-    return scenario_name_ui,
-
-
-@app.cell
-def __(mo):
-    scenario_comments_ui = mo.ui.text_area(
-        label="Scenario description",
-        full_width=True,
-        placeholder="Describe this scenario",
-    )
-    return scenario_comments_ui,
 
 
 @app.cell
 def __(
+    ascript,
+    get_scenario,
+    json,
     mo,
-    scenario_comments_ui,
-    scenario_delete_ui,
-    scenario_file_ui,
-    scenario_load_ui,
-    scenario_name_ui,
-    scenario_save_ui,
+    os,
+    set_comment,
+    set_filename,
+    set_scenario,
 ):
-    scenario_items = mo.vstack([
-        scenario_file_ui,
-        scenario_comments_ui,
-        mo.hstack([scenario_load_ui,scenario_save_ui,scenario_name_ui,scenario_delete_ui],justify='start'),
-    ])
-    return scenario_items,
+    def _upload(x):
+        if len(x) > 0:
+            set_scenario(ascript.Scenario(content=json.loads(x[0].contents),file=x[0].name))
+        else:
+            set_scenario(ascript.Scenario())
+        set_comment(get_scenario().comment)
+        set_filename(os.path.splitext(get_scenario().file)[0])
+    upload_ui = mo.ui.file(
+        filetypes=[".ascript"],
+        multiple=False,
+        kind='button',
+        label="""<font size="3">Scenario file</font>""",
+        on_change=_upload,
+    )
+
+    return upload_ui,
+
+
+@app.cell
+def __(get_scenario, json, mo, os):
+    download_ui = mo.download(
+        data=json.dumps(get_scenario().get_content(),indent=4),
+        filename=get_scenario().file,
+        mimetype="text/json",
+        label=os.path.splitext(get_scenario().file)[0],
+    ) if get_scenario().file else mo.md("")
+    return download_ui,
+
+
+@app.cell
+def __(get_comment, get_scenario, mo, set_comment):
+    def _set_comment(x):
+        get_scenario().comment = x
+        return set_comment(x)
+    comment_ui = mo.ui.text_area(
+        value=get_comment(),
+        on_change=_set_comment,
+        placeholder="Enter a description of this scenario"
+    )
+    return comment_ui,
+
+
+@app.cell
+def __(comment_ui, download_ui, get_scenario, mo, upload_ui):
+    scenario_info = mo.md(f"""<table>
+    <tr><th>Description</th><td>{comment_ui}</td></tr>
+    <tr><th>Author</th><td>{get_scenario().get_author()}</td></tr>
+    <tr><th>Created</th><td>{get_scenario().getctime()}</td></tr>
+    <tr><th>Modified</th><td>{get_scenario().getmtime()}</td></tr>
+    <tr><th>Accessed</th><td>{get_scenario().getatime()}</td></tr>
+    <tr><th>ASCRIPT Version</th><td>{get_scenario().get_version()}</td></tr>
+    <tr><th>Host Platform</th><td>{get_scenario().get_platform()}</td></tr>
+    <tr><th>Source code</th><td>GitHub commit <code><a href="https://github.com/slacgismo/ascript/commit/{get_scenario().get_commit()}">{get_scenario().get_commit()[-7:]}</a></code></td></tr>
+
+    </table>""")
+    scenario_items = mo.vstack([mo.hstack([upload_ui,download_ui],justify='start',align="center"),scenario_info,])
+    return scenario_info, scenario_items
 
 
 @app.cell
@@ -1347,7 +1350,7 @@ def __(ev_model, ev_timer_ui, json, number_evs_ui, pd, speech):
         for _col in _mt:
             _ls[_mt[_col]] += _ls[_col]        
             _ls.drop(_col,axis=1,inplace=True)
-        ev_loadshape[daytype] = _ls.resample("1H").mean()[:-1]
+        ev_loadshape[daytype] = _ls.resample("1h").mean()[:-1]
     ev_load = pd.concat(([pd.concat([ev_loadshape['weekday']]*5 + [ev_loadshape['weekend']]*2)]*52)+[ev_loadshape['weekend']])
     return daytype, ev_config, ev_load, ev_loadshape
 
@@ -1366,7 +1369,10 @@ def __():
     import matplotlib.pyplot as plt
     import seaborn as sb
     import speech
+    import ascript
+    ascript.Scenario.NEWFILE = None
     return (
+        ascript,
         config,
         dt,
         git,

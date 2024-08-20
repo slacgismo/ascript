@@ -1,6 +1,5 @@
 """ASCRIPT Scenario Data Handling"""
 import os, sys
-import filelock as fl
 import json
 import datetime as dt
 import git
@@ -51,8 +50,8 @@ class Scenario:
 
 		# location
 		"state" : "CA",
-		"county" : "ORANGE",
-		"city" : "SANTA ANA",
+		"county" : "LOS ANGELES",
+		"city" : "LOS ANGELES",
 		"substations" : [],
 	
 		# demand
@@ -101,7 +100,7 @@ class Scenario:
 	}
 
 	def __init__(self,
-			data: dict = None,
+			content: dict = None,
 			*,
 			file: str = None,
 			):
@@ -111,16 +110,24 @@ class Scenario:
 		data (dict): data default template
 		file (str): filename to use (default is Untitled_<num>.ascript)
 		"""
+		self.comment = ""
 		if file is None:
-			n = 1
-			while os.path.exists(file:=f"{self.NEWFILE}_{n}.{__appname__}"):
-				n = n+1
 			self.data = self.NEWDATA
 			for x in ["created","modified","accessed"]:
 				setattr(self,x,dt.datetime.now())
-			self.save(file)
+			if not self.NEWFILE is None:
+				n = 1
+				while os.path.exists(file:=f"{self.NEWFILE}_{n}.{__appname__}"):
+					n = n+1
+				self.save(file)
+			else:
+				self.file = "New File.ascript"
 		else:
-			self.load(file)
+			if content is None:
+				self.load(file)
+			else:
+				self.file = file
+				self.load_content(content)
 	
 	def save(self,file=None):
 		"""Save scenario to file
@@ -130,25 +137,11 @@ class Scenario:
 		"""
 		if file:
 			self.file = file
-		content = dict(
-			application=__appname__,
-			version=dict(
-				number=__version__,
-				build=__build__,
-				branch=__branch__,
-				commit=str(__commit__) if __commit__ else None
-				),
-			creator=f"""{__user__}@{__host__}.{__domain__}""",
-			created=self.created.isoformat(),
-			modified=self.modified.isoformat(),
-			accessed=self.accessed.isoformat(),
-			platform=platform.platform(),
-			data=self.data,
-			)
 		with open(self.file,"w") as fh:
-			json.dump(content,fh,indent=4)
+			json.dump(self.get_content(),fh,indent=4)
+		return self
 
-	def load(self,file=None) -> dict:
+	def load(self,file=None):
 		"""Load scenario from file
 
 		Parameters:
@@ -157,14 +150,8 @@ class Scenario:
 		if file:
 			self.file = file
 		with open(self.file,"r") as fh:
-			content = json.load(fh)
-			assert(content["application"]==__appname__)
-			for x in ["created","modified","accessed"]:
-				setattr(self,x,dt.datetime.fromisoformat(content[x]))
-			self.data = self.NEWDATA
-			for key,value in content["data"].items():
-				assert key in self.data, f"invalid property key '{key}' in '{self.file}'"
-				self.data[key] = value
+			self.load_content(json.load(fh))
+		return self
 
 	def properties(self) -> list:
 		"""List of properties in scenario
@@ -202,6 +189,50 @@ class Scenario:
 		assert name in self.data, f"invalid property name '{name}'"
 		self.accessed = dt.datetime.now()
 		return self.data[name]
+
+	def set_data(self,data):
+		"""Bulk data update"""
+		for key,value in data:
+			self.__setitem(key,value)
+
+	def load_content(self,content):
+		assert(content["application"]==__appname__)
+		for x in ["created","modified","accessed"]:
+			setattr(self,x,dt.datetime.fromisoformat(content[x]))
+		self.data = self.NEWDATA
+		for key,value in content["data"].items():
+			assert key in self.data, f"invalid property key '{key}' in '{self.file}'"
+			self.data[key] = value
+
+	def get_content(self):
+		return dict(
+			application=__appname__,
+			version=dict(
+				number=__version__,
+				build=__build__,
+				branch=__branch__,
+				commit=str(__commit__) if __commit__ else None
+				),
+			creator=self.get_author(),
+			created=self.created.isoformat(),
+			modified=self.modified.isoformat(),
+			accessed=self.accessed.isoformat(),
+			platform=platform.platform(),
+			comment=self.comment,
+			data=self.data,
+			)
+
+	def get_author(self):
+		return f"""{__user__}@{__host__}.{__domain__}"""
+
+	def get_version(self):
+		return f"{__version__}-{__build__} ({__branch__})"
+
+	def get_platform(self):
+		return f"{platform.platform()}"
+
+	def get_commit(self):
+		return f"{str(__commit__) if __commit__ else None}"
 
 	def getctime(self) -> dt.datetime:
 		"""Get the scenario creation time"""
