@@ -161,6 +161,9 @@ class Scenario:
 
 		Parameters:
 		file (str): filename to use (default is scenario filename)
+
+		Returns:
+		Scenario: self
 		"""
 		if file:
 			self.file = file
@@ -173,6 +176,9 @@ class Scenario:
 
 		Parameters:
 		file (str): filename to use (default is scenario filename)
+
+		Returns:
+		Scenario: self
 		"""
 		if file:
 			self.file = file
@@ -217,10 +223,18 @@ class Scenario:
 		self.accessed = dt.datetime.now()
 		return self.data[name]
 
-	def set_data(self,data:dict) -> None:
-		"""Bulk data update"""
+	def set_data(self,data:dict) -> typing.TypeVar('Scenario'):
+		"""Bulk data update
+
+		Parameters:
+		data (dict): items to update
+
+		Returns:
+		Scenario: self
+		"""
 		for key,value in data.items():
-			self.__setitem(key,value)
+			self.__setitem__(key,value)
+		return self
 
 	def load_content(self,content:dict) -> typing.TypeVar('Scenario'):
 		"""Load content into scenario
@@ -335,16 +349,20 @@ class Scenario:
 		"""
 		return self.get_substation_data().index.get_level_values(0).unique().tolist() if all else self.get_utilities()
 
-	def set_state(self,state:str) -> None:
+	def set_state(self,state:str) -> typing.TypeVar('Scenario'):
 		"""Set the scenario state
 
 		Parameters:
 		state(str): the state to use in the scenario
+
+		Returns:
+		Scenario: self
 		"""
 		if self.data["state"] != state:
 			assert(state in self.get_states())
 			self.data["state"] = state
 			self.set_county(self.get_counties()[0])
+		return self
 
 	def get_counties(self,state:str|None=None) -> list[str]:
 		"""Get counties in a state
@@ -359,16 +377,20 @@ class Scenario:
 			state = self.data["state"]
 		return self.get_substation_data().loc[state].index.get_level_values(0).unique().tolist()
 
-	def set_county(self,county:str) -> None:
+	def set_county(self,county:str) -> typing.TypeVar('Scenario'):
 		"""Set the county to use in the scenario
 
 		Parameters:
 		county(str): the county name to use in the scenario
+
+		Returns:
+		Scenario: self
 		"""
 		if self.data["county"] != county:
 			assert(county in self.get_counties())
 			self.data["county"] = county
 			self.set_city(self.get_cities()[0])
+		return self
 
 	def get_cities(self,state:str|None=None,county:str|None=None) -> list[str]:
 		"""Get cities in a county
@@ -386,17 +408,21 @@ class Scenario:
 			county = self.data["county"]
 		return self.get_substation_data().loc[state,county].index.get_level_values(0).unique().tolist()
 
-	def set_city(self,city:str) -> None:
+	def set_city(self,city:str) -> typing.TypeVar('Scenario'):
 		"""Set the city to use in the scenario
 
 		Parameters:
 		city(str): the city to use in the scenario
+
+		Returns:
+		Scenario: self
 		"""
 		if self.data["city"] != city:
 			assert(city in self.get_cities())
 			self.data["city"] = city
-			types = self.get_substation_types()[0]
+			types = self.get_substation_types()
 			self.set_type("SUBSTATION" if "SUBSTATION" in types else types[0])
+		return self
 
 	def get_substation_types(self,state:str|None=None,county:str|None=None,city:str|None=None) -> list[str]:
 		"""Get substation types in a city
@@ -417,15 +443,19 @@ class Scenario:
 			city = self.data["city"]
 		return self.get_substation_data().loc[state,county,city].index.get_level_values(0).unique().tolist()
 
-	def set_type(self,type:str) -> None:
+	def set_type(self,type:str) -> typing.TypeVar('Scenario'):
 		"""Change the substation type
 		
 		Parameters:
 		type(str): the substation type to use in the scenario
+
+		Returns:
+		Scenario: self
 		"""
 		if self.data["type"] != type:
 			self.data["type"] = type
 			# self.set_substation(self.get_substations()[0])
+		return self
 
 	def get_substations(self,
 			state:str|None=None,
