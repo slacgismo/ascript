@@ -131,12 +131,6 @@ def __(
 
 
 @app.cell
-def __(get_scenario):
-    get_scenario()
-    return
-
-
-@app.cell
 def __(get_filename, get_scenario, json, mo):
     download_ui = mo.download(
         data=json.dumps(get_scenario().get_content(),indent=4),
