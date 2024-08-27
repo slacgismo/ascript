@@ -5,9 +5,14 @@ import datetime as dt
 import git
 import platform
 import socket
+import typing
+import loads
+import pandas as pd
+from warnings import warn
 
 # app info
-__rootdir__ = os.path.realpath("..") if os.path.basename(os.getcwd()) == "Task6" else os.realpath(".")
+__source__ = "Task6" # source folder path relative to project root folder
+__rootdir__ = os.path.realpath("..") if os.getcwd().endswith(__source__) else os.realpath(".")
 __appname__ = "ascript"
 __version__ = "0.0.0"
 
@@ -37,6 +42,21 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
 	except:
 		__domain__ = "localhost"
 
+def find_file(name,call=None):
+	if os.path.exists(name):
+		path = name
+	elif os.path.exists(os.path.join(__rootdir__,name)):
+		path = os.path.join(__rootdir__,name)
+	else:
+		path = f"https://raw.githubusercontent.com/slacgismo/ascript/{__branch__}/{__source__}/{name}"
+	if call:
+		return call(path)
+	else:
+		return path
+
+class ScenarioException(Exception):
+	pass
+
 class Scenario:
 	"""API for scenario files
 	
@@ -44,6 +64,10 @@ class Scenario:
 	created (datetime) - datetime scenario was created
 	modified (datetime) - datetime scenario was modified
 	accessed (datetime) - datetime scenario was accessed
+	file (str) - name of scenario file
+	substations (pd.DataFrame) - substation data
+	utilities (list[str]) - list of utilities
+	data (dict) - scenario data (see NEWDATA for defaults)
 	"""
 	NEWFILE = "Untitled"
 	NEWDATA = {
@@ -53,6 +77,7 @@ class Scenario:
 		"county" : "LOS ANGELES",
 		"city" : "LOS ANGELES",
 		"substations" : [],
+		"type": "SUBSTATION",
 	
 		# demand
 		"study-year" : dt.datetime.now().year+10,
@@ -121,15 +146,17 @@ class Scenario:
 					n = n+1
 				self.save(file)
 			else:
-				self.file = "New File.ascript"
+				self.file = "New scenario.ascript"
 		else:
 			if content is None:
 				self.load(file)
 			else:
 				self.file = file
 				self.load_content(content)
+		self.substations = None
+		self.utilities = None
 	
-	def save(self,file=None):
+	def save(self,file=None) -> typing.TypeVar('Scenario'):
 		"""Save scenario to file
 
 		Parameters:
@@ -141,7 +168,7 @@ class Scenario:
 			json.dump(self.get_content(),fh,indent=4)
 		return self
 
-	def load(self,file=None):
+	def load(self,file=None) -> typing.TypeVar('Scenario'):
 		"""Load scenario from file
 
 		Parameters:
@@ -153,7 +180,7 @@ class Scenario:
 			self.load_content(json.load(fh))
 		return self
 
-	def properties(self) -> list:
+	def properties(self) -> dict:
 		"""List of properties in scenario
 
 		"""
@@ -175,36 +202,51 @@ class Scenario:
 		"""
 		return json.dumps(self.data,**kwargs)
 
-	def delete(self):
+	def delete(self) -> None:
 		"""Delete scenario file"""
 		os.remove(self.file)
 
-	def __setitem__(self,name:str,value:any):
+	def __setitem__(self,name:str,value:str|float|int) -> None:
 		assert name in self.data, f"invalid property name '{name}'"
 		assert type(value) == type(self.data[name]), f"invalid property value type '{type(value)}' for property '{name}'"
 		self.modified = dt.datetime.now()
 		self.data[name] = value
 
-	def __getitem__(self,name:str) -> any:
+	def __getitem__(self,name:str) -> str|float|int:
 		assert name in self.data, f"invalid property name '{name}'"
 		self.accessed = dt.datetime.now()
 		return self.data[name]
 
-	def set_data(self,data):
+	def set_data(self,data:dict) -> None:
 		"""Bulk data update"""
-		for key,value in data:
+		for key,value in data.items():
 			self.__setitem(key,value)
 
-	def load_content(self,content):
+	def load_content(self,content:dict) -> typing.TypeVar('Scenario'):
+		"""Load content into scenario
+
+		Parameters:
+		content(dict): content data to load
+
+		Returns:
+		Scenario: the new scenario object
+		"""
 		assert(content["application"]==__appname__)
 		for x in ["created","modified","accessed"]:
 			setattr(self,x,dt.datetime.fromisoformat(content[x]))
 		self.data = self.NEWDATA
+		self.comment = content["comment"]
 		for key,value in content["data"].items():
 			assert key in self.data, f"invalid property key '{key}' in '{self.file}'"
 			self.data[key] = value
+		return self
 
-	def get_content(self):
+	def get_content(self) -> dict:
+		"""Get the scenario content
+
+		Returns:
+		dict: content data
+		"""
 		return dict(
 			application=__appname__,
 			version=dict(
@@ -222,16 +264,36 @@ class Scenario:
 			data=self.data,
 			)
 
-	def get_author(self):
+	def get_author(self) -> str:
+		"""Get author name
+
+		Returns:
+		str: author name
+		"""
 		return f"""{__user__}@{__host__}.{__domain__}"""
 
-	def get_version(self):
+	def get_version(self) -> str:
+		"""Get the version used to create the scenario
+
+		Returns:
+		str: version ifno
+		"""
 		return f"{__version__}-{__build__} ({__branch__})"
 
-	def get_platform(self):
+	def get_platform(self) -> str:
+		"""Get the platform on which the scenario was created
+
+		Returns:
+		str: platform info
+		"""
 		return f"{platform.platform()}"
 
-	def get_commit(self):
+	def get_commit(self) -> str:
+		"""Get the github commit which contains the source to the version used to create the scenario
+
+		Returns:
+		str: the commit number
+		"""
 		return f"{str(__commit__) if __commit__ else None}"
 
 	def getctime(self) -> dt.datetime:
@@ -247,12 +309,184 @@ class Scenario:
 		"""Get the scenario access time"""
 		assert self.accessed >= self.created, "invalid access time"
 		return self.accessed
+
+	def get_substation_data(self) -> pd.DataFrame:
+		"""Get the substation data
+
+		Returns:
+		pandas.DataFrame: the substation data
+		"""
+		if self.substations is None:
+			self.substations = find_file("substations.csv.gz",
+				call=lambda x:pd.read_csv(x,
+				    low_memory=False,
+				    index_col=["STATE", "COUNTY", "CITY", "TYPE", "NAME"],
+					).sort_index())
+		return self.substations
+
+	def get_states(self,all:bool=False) -> list[str]:
+		"""Get list of states
+
+		Parameters:
+		all (bool): return all states instead of only supported states
+
+		Returns:
+		list[str]: list of (supported) states
+		"""
+		return self.get_substation_data().index.get_level_values(0).unique().tolist() if all else self.get_utilities()
+
+	def set_state(self,state:str) -> None:
+		"""Set the scenario state
+
+		Parameters:
+		state(str): the state to use in the scenario
+		"""
+		if self.data["state"] != state:
+			assert(state in self.get_states())
+			self.data["state"] = state
+			self.set_county(self.get_counties()[0])
+
+	def get_counties(self,state:str|None=None) -> list[str]:
+		"""Get counties in a state
+
+		Parameters:
+		state (str): state code, e.g. "CA"
+
+		Returns:
+		list[str]: list of county names in the state
+		"""
+		if state is None:
+			state = self.data["state"]
+		return self.get_substation_data().loc[state].index.get_level_values(0).unique().tolist()
+
+	def set_county(self,county:str) -> None:
+		"""Set the county to use in the scenario
+
+		Parameters:
+		county(str): the county name to use in the scenario
+		"""
+		if self.data["county"] != county:
+			assert(county in self.get_counties())
+			self.data["county"] = county
+			self.set_city(self.get_cities()[0])
+
+	def get_cities(self,state:str|None=None,county:str|None=None) -> list[str]:
+		"""Get cities in a county
+
+		Parameters:
+		state (str): state code, e.g. "CA"
+		county (str): county name, e.g., "ORANGE"
+
+		Returns:
+		list[str]: list of city names in the county
+		"""
+		if state is None:
+			state = self.data["state"]
+		if county is None:
+			county = self.data["county"]
+		return self.get_substation_data().loc[state,county].index.get_level_values(0).unique().tolist()
+
+	def set_city(self,city:str) -> None:
+		"""Set the city to use in the scenario
+
+		Parameters:
+		city(str): the city to use in the scenario
+		"""
+		if self.data["city"] != city:
+			assert(city in self.get_cities())
+			self.data["city"] = city
+			types = self.get_substation_types()[0]
+			self.set_type("SUBSTATION" if "SUBSTATION" in types else types[0])
+
+	def get_substation_types(self,state:str|None=None,county:str|None=None,city:str|None=None) -> list[str]:
+		"""Get substation types in a city
+
+		Parameters:
+		state (str): state code, e.g. "CA"
+		county (str): county name, e.g., "ORANGE"
+		city (str): city name, e.g., "SANTA ANA"
+
+		Returns:
+		list[str]: list of substation types in the city
+		"""
+		if state is None:
+			state = self.data["state"]
+		if county is None:
+			county = self.data["county"]
+		if city is None:
+			city = self.data["city"]
+		return self.get_substation_data().loc[state,county,city].index.get_level_values(0).unique().tolist()
+
+	def set_type(self,type:str) -> None:
+		"""Change the substation type
+		
+		Parameters:
+		type(str): the substation type to use in the scenario
+		"""
+		if self.data["type"] != type:
+			self.data["type"] = type
+			# self.set_substation(self.get_substations()[0])
+
+	def get_substations(self,
+			state:str|None=None,
+			county:str|None=None,
+			city:str|None=None,
+			types:str|list[str]=None,
+			) -> list[str]:
+		"""Get substations in a city
+
+		Parameters:
+		state (str): state code, e.g. "CA"
+		county (str): county name, e.g., "ORANGE"
+		city (str): city name, e.g., "SANTA ANA"
+		types (str|list[str]|None): substation types (None is all)
+
+		Returns:
+		list[str]: list of substation names in the city
+		"""
+		if state is None:
+			state = self.data["state"]
+		if county is None:
+			county = self.data["county"]
+		if city is None:
+			city = self.data["city"]
+		if types is None:
+			result = self.get_substation_data().loc[state,county,city].index.get_level_values(1).unique().tolist()
+		elif type(types) is list:
+			result = []
+			for st in types:
+				result.extend(self.get_substations(state,county,city,st))
+		else:
+			result = self.get_substation_data().loc[state,county,city,types].index.get_level_values(0).unique().tolist()
+		return result
+
+	def get_utilities(self,state:str|None=None) -> list[str]:
+		"""Get the utilities in the scenario
+
+		Parameters:
+		state(str): state name (default None for all)
+
+		Returns:
+		list[str]: list of states
+		"""
+		if self.utilities is None:
+			self.utilities = find_file("utilities.json",
+				call=lambda x: json.load(open(x,"r")))
+		if state is None:
+			return list(self.utilities.keys())
+		if not state in self.utilities:
+			raise ScenarioException("state not supported")
+		return self.utilities[state]
+
 #
 # Self test
 #
 if __name__ == "__main__":
+
 	from numpy.testing import assert_raises
 	try:
+
+		# check basic functionalities
 		new = Scenario()
 		old = Scenario(file=new.file)
 		for key in new.properties():
@@ -261,6 +495,25 @@ if __name__ == "__main__":
 		with assert_raises(AssertionError): old["no-such-thing"] = None
 		with assert_raises(AssertionError): old["city"] = None
 		assert(old.getctime()<old.getmtime()<old.getatime())
+
+		# check methods
+		assert(len(new.get_substation_data())>0)
+		assert("CA" in new.get_states())
+		assert("ALAMEDA" in new.get_counties("CA"))
+		assert("ALISO VIEJO" in new.get_cities("CA","ORANGE"))
+		assert("SUBSTATION" in new.get_substation_types("CA","ORANGE","SANTA ANA"))
+		assert("CAMDEN" in new.get_substations("CA","ORANGE","SANTA ANA"))
+		assert("CAMDEN" in new.get_substations("CA","ORANGE","SANTA ANA","SUBSTATION"))
+		assert("CAMDEN" not in new.get_substations("CA","ORANGE","SANTA ANA","RISER"))
+		assert("CAMDEN" in new.get_substations("CA","ORANGE","SANTA ANA",["SUBSTATION","RISER"]))
+		assert("CA" in new.get_utilities())
+		assert("Southern California Edison Co" in new.get_utilities("CA"))
+
+		# check whether public methods have docs
+		for item in [getattr(Scenario,x) for x in dir(Scenario) if not x.startswith("_")]:
+			if callable(item) and item.__doc__ is None:
+				warn(f"{item.__name__} has no documentation")
+
 	finally:
 		new.delete()
 	new.save("/tmp/test.ascript")
