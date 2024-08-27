@@ -73,16 +73,28 @@ def __(
 
 @app.cell
 def __(ascript, mo):
-    get_filename,set_filename = mo.state("")
     get_scenario,set_scenario = mo.state(ascript.Scenario())
+    get_filename,set_filename = mo.state("")
     get_comment,set_comment = mo.state(get_scenario().comment)
+    get_state,set_state = mo.state(get_scenario()["state"])
+    get_county,set_county = mo.state(get_scenario()["county"])
+    get_city,set_city = mo.state(get_scenario()["city"])
+    get_type,set_type = mo.state(get_scenario()["type"])
     return (
+        get_city,
         get_comment,
+        get_county,
         get_filename,
         get_scenario,
+        get_state,
+        get_type,
+        set_city,
         set_comment,
+        set_county,
         set_filename,
         set_scenario,
+        set_state,
+        set_type,
     )
 
 
@@ -98,50 +110,77 @@ def __(
     set_scenario,
 ):
     def _upload(x):
-        if len(x) > 0:
-            set_scenario(ascript.Scenario(content=json.loads(x[0].contents),file=x[0].name))
+        if len(x) == 1:
+            get_scenario().load_content(json.loads(x[0].contents))
+            get_scenario().file = x[0].name
         else:
-            set_scenario(ascript.Scenario())
+            _new = ascript.Scenario()
+            _new.file = "New file.ascript"
+            set_scenario(_new)
         set_comment(get_scenario().comment)
         set_filename(os.path.splitext(get_scenario().file)[0])
+
     upload_ui = mo.ui.file(
         filetypes=[".ascript"],
         multiple=False,
         kind='button',
-        label="""<font size="3">Scenario file</font>""",
+        label="<font size=3>Upload<font>", #"""<font size="3">Upload a scenario file</font>""",
         on_change=_upload,
     )
-
     return upload_ui,
 
 
 @app.cell
-def __(get_scenario, json, mo, os):
+def __(get_scenario):
+    get_scenario()
+    return
+
+
+@app.cell
+def __(get_filename, get_scenario, json, mo):
     download_ui = mo.download(
         data=json.dumps(get_scenario().get_content(),indent=4),
-        filename=get_scenario().file,
+        filename=get_filename()+".ascript",
         mimetype="text/json",
-        label=os.path.splitext(get_scenario().file)[0],
-    ) if get_scenario().file else mo.md("")
+        label="Download", #f"Download '{os.path.splitext(get_filename())[0]}' file",
+    )
     return download_ui,
 
 
 @app.cell
-def __(get_comment, get_scenario, mo, set_comment):
+def __(get_comment, get_scenario, mo, set_comment, set_scenario):
     def _set_comment(x):
         get_scenario().comment = x
+        set_scenario(get_scenario())
         return set_comment(x)
     comment_ui = mo.ui.text_area(
         value=get_comment(),
         on_change=_set_comment,
-        placeholder="Enter a description of this scenario"
+        placeholder="Enter a description of this scenario",
+        rows=2,
+        full_width=True,
     )
     return comment_ui,
 
 
 @app.cell
-def __(comment_ui, download_ui, get_scenario, mo, upload_ui):
+def __(get_filename, get_scenario, mo, set_filename, set_scenario):
+    def _set_filename(x):
+        get_scenario().file = x
+        set_scenario(get_scenario())
+        set_filename(x)
+    filename_ui = mo.ui.text(
+        value=get_filename() if get_filename() else "New scenario",
+        on_change=set_filename,
+        placeholder="Name your scenario",
+    )
+    return filename_ui,
+
+
+@app.cell
+def __(comment_ui, download_ui, filename_ui, get_scenario, mo, upload_ui):
     scenario_info = mo.md(f"""<table>
+    <tr><th>Scenario name</th><td>{filename_ui}</td></tr>
     <tr><th>Description</th><td>{comment_ui}</td></tr>
     <tr><th>Author</th><td>{get_scenario().get_author()}</td></tr>
     <tr><th>Created</th><td>{get_scenario().getctime()}</td></tr>
@@ -190,15 +229,11 @@ def __(
 
 
 @app.cell
-def __(pd):
+def __(get_scenario):
     #
     # Substation data
     #
-    substation_data = pd.read_csv(
-        f"substations.csv.gz",
-        low_memory=False,
-        index_col=["STATE", "COUNTY", "CITY", "TYPE", "NAME"],
-    ).sort_index()
+    substation_data = get_scenario().get_substation_data()
     defaults = dict(STATE="CA",COUNTY="ORANGE",CITY="SANTA ANA",SUBSTATION=["CAMDEN"],UTILITY="Southern California Edison Co")
     return defaults, substation_data
 
@@ -211,76 +246,69 @@ def __(substation_ui):
 
 
 @app.cell
-def __(defaults, json, loads, mo):
+def __(get_scenario, mo, set_scenario):
     #
     # State selection
     #
-    utilities_data = json.load(open("utilities.json","r"))
-    _values = loads.get_states()
+    def _set_state(x):
+        set_scenario(get_scenario().set_state(x))
     state_ui = mo.ui.dropdown(
         label="State:",
-        options=list(utilities_data),
-        value=(defaults['STATE'] if 'STATE' in defaults and defaults['STATE'] in _values else _values[0]),
-        # on_change=set_state,
+        options=get_scenario().get_utilities(),
+        value=get_scenario()["state"],
+        on_change=_set_state,
         allow_select_none=False,
     )
-    return state_ui, utilities_data
+    return state_ui,
 
 
 @app.cell
-def __(defaults, mo, state_ui, substation_data):
+def __(get_scenario, mo, set_scenario):
     #
     # County selection
     #
-    _values = (
-        substation_data.loc[state_ui.value]
-        .index.get_level_values(0)
-        .unique()
-        .tolist()
-    )
+    def _set_county(x):
+        set_scenario(get_scenario().set_county(x))
     county_ui = mo.ui.dropdown(
         label="County:",
-        options=_values,
-        value=(defaults['COUNTY'] if 'COUNTY' in defaults and defaults['COUNTY'] in _values else _values[0]),
+        options=get_scenario().get_counties(),
+        value=get_scenario()["county"],
+        on_change=_set_county,
         allow_select_none=False,
     )
     return county_ui,
 
 
 @app.cell
-def __(county_ui, defaults, mo, state_ui, substation_data):
+def __(get_scenario, mo, set_scenario):
     #
     # City selection
     #
-    _values = (
-        substation_data.loc[state_ui.value, county_ui.value]
-        .index.get_level_values(0)
-        .unique()
-        .tolist()
-    )
+    def _set_city(x):
+        set_scenario(get_scenario().set_city(x))
     city_ui = mo.ui.dropdown(
         label="City:",
-        options=_values,
-        value=(defaults['CITY'] if 'CITY' in defaults and defaults['CITY'] in _values else _values[0]),
+        options=get_scenario().get_cities(),
+        value=get_scenario()["city"],
+        on_change=_set_city,
+        allow_select_none=False,
     )
     return city_ui,
 
 
 @app.cell
-def __(city_ui, county_ui, mo, state_ui, substation_data):
+def __(get_scenario, mo, set_scenario):
     #
     # Substation type selection
     #
-    _values = (
-        substation_data.loc[state_ui.value, county_ui.value, city_ui.value]
-        .index.get_level_values(0)
-        .unique()
-        .tolist()
-    )
+    def _set_type(x):
+        set_scenario(get_scenario().set_type(x))
     type_ui = mo.ui.dropdown(
         label="Substation type:",
-        options=_values,
-        value=("SUBSTATION" if "SUBSTATION" in _values else _values[0]),
+        options=get_scenario().get_substation_types(),
+        value=get_scenario()["type"],
+        on_change=_set_type,
+        allow_select_none=False,
     )
     return type_ui,
 
@@ -563,11 +591,11 @@ def __(pd):
 
 
 @app.cell
-def __(defaults, mo, state_ui, tariff_data, utilities_data):
+def __(defaults, get_scenario, mo, state_ui, tariff_data, utilities_data):
     #
     # Read state utility database
     #
-    _utilities = [x for x in utilities_data[state_ui.value] if x in tariff_data.index.get_level_values(0).unique()]
+    _utilities = [x for x in get_scenario().get_utilities(state_ui.value) if x in tariff_data.index.get_level_values(0).unique()]
     utility_ui = mo.ui.dropdown(
         label="Utility name:",
         options=_utilities,
