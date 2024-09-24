@@ -9,3 +9,6 @@ s3fs
 clarabel
 plotly
 requests
+sg2t
+GitPython
+seaborn
