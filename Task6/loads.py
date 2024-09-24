@@ -130,7 +130,7 @@ STATEFIPS = {
 	"WI":"55", #	State; counties
 	"WY":"56", #	State; counties	
 }
-COUNTYFIPS = pd.read_csv("fips.csv",header=0,names=["fips","county","state"],dtype='str').dropna().set_index(["state","county"])
+COUNTYFIPS = pd.read_csv(__file__.replace("loads.py","fips.csv"),header=0,names=["fips","county","state"],dtype='str').dropna().set_index(["state","county"])
 COUNTYFIPS['fips'] = [f"{int(x[:-3]):02d}{int(x[-3:])*10:05d}" for x in COUNTYFIPS['fips']]
 
 WEATHER_COLUMNS = {
