@@ -10,7 +10,7 @@ def __(dt, git, mo):
         f"""
         # ASCRIPT -- Advanced Smart-Charging Infrastructure Planning Tool
 
-        Version 0.0.0-{dt.datetime.now().strftime("%y%m%d")} ({git.Repo("..").active_branch})
+        Version 0.0.0-{dt.datetime.now().strftime("%y%m%d")}
         """
     )
     return
@@ -1345,7 +1345,6 @@ def __():
     import marimo as mo
     import os, sys
     import datetime as dt
-    import git
     import pandas as pd
     import json
     import config
