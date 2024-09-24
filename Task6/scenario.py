@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.7.19"
+__generated_with = "0.8.19"
 app = marimo.App(width="full", app_title="")
 
 
@@ -25,7 +25,7 @@ def __(mo):
 
     Each scenario requires you to specify which which county and substations you are studying, what demand for EV charging is present, where EV chargers are located, what the substations and feeder limits are, how the weather is affecting renewables, how much energy storage is available and how it is controlled, and how much customer load growth and electrification there is.
     """)
-    return welcome_items,
+    return (welcome_items,)
 
 
 @app.cell
@@ -90,7 +90,7 @@ def __(get_filename, mo, set_filename):
         multiple=False,
         on_change=lambda x:set_filename(x[0].path if len(x)>0 else ""),
     )
-    return scenario_file_ui,
+    return (scenario_file_ui,)
 
 
 @app.cell
@@ -122,7 +122,7 @@ def __(get_filename, mo, os, set_filename):
         value=os.path.splitext(os.path.basename(get_filename()))[0] if get_filename() else "",
         on_change=_set_filename,
     )
-    return scenario_name_ui,
+    return (scenario_name_ui,)
 
 
 @app.cell
@@ -138,7 +138,7 @@ def __(
         scenario_file_ui,
         mo.hstack([scenario_load_ui,scenario_save_ui,scenario_name_ui,scenario_delete_ui],justify='start'),
     ])
-    return scenario_items,
+    return (scenario_items,)
 
 
 @app.cell
@@ -171,7 +171,7 @@ def __(
         {load_overview}
     </table>
     """)
-    return overview_items,
+    return (overview_items,)
 
 
 @app.cell
@@ -192,7 +192,6 @@ def __(pd):
 def __(substation_ui):
     substations = substation_ui.value.ZIP.to_dict()
     substation_names = ", ".join(substations.keys()) if substations else None
-
     return substation_names, substations
 
 
@@ -230,7 +229,7 @@ def __(defaults, mo, state_ui, substation_data):
         value=(defaults['COUNTY'] if 'COUNTY' in defaults and defaults['COUNTY'] in _values else _values[0]),
         allow_select_none=False,
     )
-    return county_ui,
+    return (county_ui,)
 
 
 @app.cell
@@ -249,7 +248,7 @@ def __(county_ui, defaults, mo, state_ui, substation_data):
         options=_values,
         value=(defaults['CITY'] if 'CITY' in defaults and defaults['CITY'] in _values else _values[0]),
     )
-    return city_ui,
+    return (city_ui,)
 
 
 @app.cell
@@ -268,7 +267,7 @@ def __(city_ui, county_ui, mo, state_ui, substation_data):
         options=_values,
         value=("SUBSTATION" if "SUBSTATION" in _values else _values[0]),
     )
-    return type_ui,
+    return (type_ui,)
 
 
 @app.cell
@@ -306,7 +305,7 @@ def __(
                                 pagination=None,
                                 show_column_summaries=False,
                                 )
-    return substation_ui,
+    return (substation_ui,)
 
 
 @app.cell
@@ -330,7 +329,7 @@ def __(
         mo.hstack([name_ui,service_ui,voltage_ui]),
         substation_ui,
     ])
-    return location_items,
+    return (location_items,)
 
 
 @app.cell
@@ -347,7 +346,7 @@ def __(city_ui, county_ui, state_ui, substation_names, substations):
     </tr>
     <tr><td colspan=4><hr/></td></tr>
     """
-    return location_overview,
+    return (location_overview,)
 
 
 @app.cell
@@ -386,7 +385,7 @@ def __(
     </tr>
     <tr><td colspan=4><hr/></td></tr>
     """
-    return demand_overview,
+    return (demand_overview,)
 
 
 @app.cell
@@ -545,7 +544,7 @@ def __(pd):
         low_memory=False,
         index_col=["utility","sector","name"],
     ).sort_index()
-    return tariff_data,
+    return (tariff_data,)
 
 
 @app.cell
@@ -560,7 +559,7 @@ def __(defaults, mo, state_ui, tariff_data, utilities_data):
         value=defaults['UTILITY'] if 'UTILITY' in defaults else utilities_data[0],
         allow_select_none=False,
     )
-    return utility_ui,
+    return (utility_ui,)
 
 
 @app.cell
@@ -632,19 +631,19 @@ def __(
         set_workplace_fraction(round(get_workplace_fraction()*(100-x)/total))
         set_residential_fraction(round(get_residential_fraction()*(100-x)/total))
         return set_public_fraction(x)
-        
+
     def _set_workplace_fraction(x):
         total = get_public_fraction() + get_residential_fraction()
         set_public_fraction(round(get_public_fraction()*(100-x)/total))
         set_residential_fraction(round(get_residential_fraction()*(100-x)/total))
         return set_workplace_fraction(x)
-        
+
     def _set_residential_fraction(x):
         total = get_workplace_fraction() + get_public_fraction()
         set_workplace_fraction(round(get_workplace_fraction()*(100-x)/total))
         set_public_fraction(round(get_public_fraction()*(100-x)/total))
         return set_residential_fraction(x)
-        
+
     public_fraction_ui = mo.ui.slider(
         start=0,
         stop=100,
@@ -720,8 +719,7 @@ def __(
     """),
         # mo.hstack([public_ui,workplace_ui,residential_ui]),
     ])
-
-    return tariff_items,
+    return (tariff_items,)
 
 
 @app.cell
@@ -744,7 +742,7 @@ def __(export_capacity_ui, import_capacity_ui, load, load_fraction_ui):
     </tr>
     <tr><td colspan=4><hr/></td></tr>
     """
-    return feeder_overview,
+    return (feeder_overview,)
 
 
 @app.cell
@@ -786,7 +784,7 @@ def __(import_capacity_ui, load, mo):
         debounce=True,
         show_value=True,
     )
-    return load_fraction_ui,
+    return (load_fraction_ui,)
 
 
 @app.cell
@@ -798,7 +796,7 @@ def __(export_capacity_ui, import_capacity_ui, load_fraction_ui, mo):
         mo.md("""Set constraints on the network assets to include in the hotspot analysis."""),
         mo.hstack([import_capacity_ui,export_capacity_ui,load_fraction_ui]),
     ])
-    return feeder_items,
+    return (feeder_items,)
 
 
 @app.cell
@@ -852,7 +850,7 @@ def __(
     </tr>
     <tr><td colspan=4><hr/></td></tr>
     """
-    return load_overview,
+    return (load_overview,)
 
 
 @app.cell
@@ -1013,7 +1011,7 @@ def __(
             _load,
         ]
     )
-    return loadshape_items,
+    return (loadshape_items,)
 
 
 @app.cell
@@ -1060,7 +1058,6 @@ def __(
     _evloads = ev_load.sum(axis=1).values*1000
     load["electric[kW]"] += _evloads
     load["total[kW]"] += _evloads
-
     return base, load
 
 
@@ -1102,7 +1099,7 @@ def __(distributed_renewables_ui, solar_capacity_ui, wind_capacity_ui):
     </tr>
     <tr><td colspan=4><hr/></td></tr>
     """
-    return renewables_overview,
+    return (renewables_overview,)
 
 
 @app.cell
@@ -1356,7 +1353,7 @@ def __():
     import math
     import matplotlib.pyplot as plt
     import seaborn as sb
-    import speech
+    from sg2t.transportation import speech
     return (
         config,
         dt,
